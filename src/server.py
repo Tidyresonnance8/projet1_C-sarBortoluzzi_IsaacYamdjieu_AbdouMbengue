@@ -40,8 +40,10 @@ def server_multitache(bind_addr: str, bind_port: int, root_dir: str) -> int:
                                 'fichier_fini': False,
                                 'dernier_contact': time.time(),
                                 'rtt': 2.0,
-                                'fin_envoye': False,  # BUG FIX #2 : tracker si paquet fin envoyé
-                                'last_ack': 0,        # BUG FIX #2 : dernier ACK reçu du client
+                                'fin_envoye': False,
+                                'last_ack': 0,
+                                'remote_window': window,
+                                'last_ts': 0,
                             }
                         except FileNotFoundError:
                             print(f"Fichier introuvable : {chemin_local}", file=sys.stderr)
@@ -55,8 +57,8 @@ def server_multitache(bind_addr: str, bind_port: int, root_dir: str) -> int:
                         etat = clients[peer_addr]
                         etat['dernier_contact'] = time.time()
                         if pack_type == protocol.PTYPE_ACK or pack_type == protocol.PTYPE_SACK:
-                            # BUG FIX #2 : mémoriser le dernier ACK reçu
                             etat['last_ack'] = seqnum
+                            etat['remote_window'] = window
                             now_ms = int(time.time() * 1000) % (2**32)
                             rtt_ms = (now_ms - timestamp) % (2**32)
                             rtt_sec = rtt_ms / 1000.0
@@ -79,22 +81,20 @@ def server_multitache(bind_addr: str, bind_port: int, root_dir: str) -> int:
             temps_actuel = time.time()
             for addr, etat in clients.items():
                 # Envoyer les données tant que fenêtre disponible et fichier pas fini
-                while len(etat['memoire_envoi']) < 63 and not etat['fichier_fini']:
+                while (len(etat['memoire_envoi']) < etat['remote_window'] and len(etat['memoire_envoi']) < 63 and not etat['fichier_fini']):
                     morceau = etat['file'].read(1024)
                     if morceau == b"":
                         etat['fichier_fini'] = True
                         break
+                    ts_now = int(time.time() * 1000) % (2**32)
                     packet = protocol.empackage(
                         protocol.PTYPE_DATA, 63,
-                        etat['prochain_seqnum'], 0, morceau
+                        etat['prochain_seqnum'], ts_now, morceau
                     )
                     sock.sendto(packet, addr)
                     etat['memoire_envoi'][etat['prochain_seqnum']] = packet
                     etat['prochain_seqnum'] = (etat['prochain_seqnum'] + 1) % 2048
 
-                # BUG FIX #2 : envoyer le paquet de fin avec le bon seqnum
-                # Le paquet vide doit avoir seqnum = prochain_seqnum attendu par le client
-                # = etat['last_ack'] après que tous les paquets data ont été ACKés
                 if etat['fichier_fini'] and len(etat['memoire_envoi']) == 0 and not etat['fin_envoye']:
                     # seqnum du paquet fin = prochain_seqnum (ce que le client attend)
                     pkt_fin = protocol.empackage(
