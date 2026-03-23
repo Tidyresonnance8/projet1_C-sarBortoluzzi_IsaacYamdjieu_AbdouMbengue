@@ -5,6 +5,8 @@ import argparse
 import protocol
 import time
 
+MAX_RETRANSMIT_FINAL = 10
+
 def server_multitache(bind_addr: str, bind_port: int, root_dir: str) -> int:
     with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as sock:
         sock.bind((bind_addr, bind_port))
@@ -27,7 +29,6 @@ def server_multitache(bind_addr: str, bind_port: int, root_dir: str) -> int:
                         chemin_extrait = texte.split(' ')
                         if len(chemin_extrait) < 2:
                             continue
-                        # BUG FIX #1 : utiliser root_dir au lieu de "."
                         chemin_local = os.path.join(root_dir, chemin_extrait[1].strip().lstrip('/'))
                         print(f"Nouvelle requête : {chemin_local}", file=sys.stderr)
                         try:
@@ -47,7 +48,6 @@ def server_multitache(bind_addr: str, bind_port: int, root_dir: str) -> int:
                             }
                         except FileNotFoundError:
                             print(f"Fichier introuvable : {chemin_local}", file=sys.stderr)
-                            # BUG FIX #2 : envoyer paquet vide avec seqnum=0 (premier attendu)
                             pkt_err = protocol.empackage(
                                 protocol.PTYPE_DATA, 0, 0, timestamp, b""
                             )
@@ -114,7 +114,7 @@ def server_multitache(bind_addr: str, bind_port: int, root_dir: str) -> int:
                             sock.sendto(pkt_sauvegarde, addr)
                     elif 'pkt_fin' in etat:
                         # Retransmettre le paquet de fin si pas encore acquitté
-                        sock.sendto(etat['pkt_fin'], addr)
+                        for _ in range (MAX_RETRANSMIT_FINAL) : sock.sendto(etat['pkt_fin'], addr)
                     etat['dernier_contact'] = temps_actuel
 
                 # Considérer le transfert terminé 3 secondes après le paquet fin envoyé
