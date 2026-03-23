@@ -6,9 +6,9 @@ Usage :
     python3 benchmark_srtp.py
 
 Produit 3 figures dans ./plots/ :
-    throughput_vs_filesize.png   — débit (KB/s) en fonction de la taille du fichier
-    throughput_vs_loss.png       — débit en fonction du taux de perte (réseau imparfait)
-    latency_cdf.png              — CDF du temps de transfert par taille de fichier
+    throughput_vs_filesize.png — débit (KB/s) en fonction de la taille du fichier
+    throughput_vs_loss.png — débit en fonction du taux de perte (réseau imparfait)
+    latency_cdf.png — CDF du temps de transfert par taille de fichier
 """
 
 import os
@@ -23,7 +23,6 @@ import statistics
 import random
 
 import matplotlib
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
@@ -71,7 +70,7 @@ def run_transfer(serve_dir, filename, filesize, timeout=TIMEOUT):
     server_proc = subprocess.Popen(
         [sys.executable, str(SERVER_PY), HOST, str(port)],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        cwd=str(serve_dir),
+        cwd=str(serve_dir)
     )
     time.sleep(0.3)
 
@@ -133,20 +132,24 @@ def plot_throughput_vs_size(results: dict, out: pathlib.Path):
     stdevs = [statistics.stdev(results[s]) if len(results[s]) > 1 else 0
             for s in sizes]
 
-    labels = [_fmt_size(s) for s in sizes]
+    x_kb = np.array(sizes, dtype=float)
 
     fig, ax = plt.subplots(figsize=(10, 5))
-    x = np.arange(len(sizes))
-    ax.bar(x, means, yerr=stdevs, capsize=4,
-        color="blue", edgecolor="white", linewidth=0.5)
-    ax.set_xticks(x)
-    ax.set_xticklabels(labels, fontsize=8, rotation=30, ha="right")
+    ax.errorbar(x_kb, means, yerr=stdevs, fmt="-o", color="blue",
+                linewidth=2, capsize=4, markersize=6)
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(
+        lambda v, _: _fmt_size(int(v))))
+    ax.xaxis.set_minor_formatter(ticker.NullFormatter())
+    ax.set_xticks(x_kb)
+    ax.set_xticklabels([_fmt_size(s) for s in sizes], fontsize=8,
+                        rotation=30, ha="right")
     ax.set_xlabel("Taille du fichier")
     ax.set_ylabel("Débit moyen (KB/s)")
-    ax.set_title("Débit en fonction de la taille du fichier\n"
+    ax.set_title("Débit en fonction de la taille du fichier (log-log)\n"
                 f"(réseau loopback, sans pertes, {len(sizes)} tailles de 1 KB à 100 MB)")
-    ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
-    ax.grid(axis="y", linestyle="--", alpha=0.4)
+    ax.grid(which="both", linestyle="--", alpha=0.4)
     fig.tight_layout()
     fig.savefig(out, dpi=150)
     plt.close(fig)
@@ -187,14 +190,15 @@ def bench_throughput_vs_loss(tmp_base: pathlib.Path, loss_rates, repeats=3,
             server_proc = subprocess.Popen(
                 [sys.executable, str(SERVER_PY), HOST, str(port)],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                cwd=str(serve_dir),
+                cwd=str(serve_dir)
             )
             time.sleep(0.3)
 
             # Instancier le proxy avec DROP_PROB = rate, CORRUPT_PROB = 0
             prx = proxy_mod.UDPCapturingProxy(server_port=port, imperfect_network=True)
-            prx.DROP_PROB    = rate
-            prx.CORRUPT_PROB = 0.0
+            prx.DROP_PROB = rate
+            prx.CORRUPT_PROB = rate
+            prx.DUPLICATE_PROB = rate
             prx.start()
 
             t0 = time.perf_counter()
@@ -229,8 +233,7 @@ def bench_throughput_vs_loss(tmp_base: pathlib.Path, loss_rates, repeats=3,
     return results
 
 
-def plot_throughput_vs_loss(results: dict, out: pathlib.Path,
-                            file_size_kb=LOSS_BENCH_SIZE_KB):
+def plot_throughput_vs_loss(results: dict, out: pathlib.Path, file_size_kb=LOSS_BENCH_SIZE_KB):
     if not results:
         return
     rates  = sorted(results)
@@ -239,15 +242,22 @@ def plot_throughput_vs_loss(results: dict, out: pathlib.Path,
             for r in rates]
 
     fig, ax = plt.subplots(figsize=(7, 4))
-    ax.errorbar([r * 100 for r in rates], means, yerr=stdevs,
+    # Offset de 0.1 sur l'axe X pour éviter log(0) au taux 0%
+    x_pct = [r * 100 + 0.1 for r in rates]
+    ax.errorbar(x_pct, means, yerr=stdevs,
                 fmt="-o", color="orange", linewidth=2, capsize=4,
                 markersize=6)
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(
+        lambda v, _: f"{v - 0.1:.4g}%"))
+    ax.set_xticks(x_pct)
+    ax.set_xticklabels([f"{r * 100:.4g}%" for r in rates], fontsize=8)
     ax.set_xlabel("Taux de perte simulé (%)")
     ax.set_ylabel("Débit moyen (KB/s)")
-    ax.set_title(f"Impact des pertes sur le débit\n"
+    ax.set_title(f"Impact des pertes sur le débit (log-log)\n"
                 f"(fichier {_fmt_size(file_size_kb)}, proxy UDP loopback)")
-    ax.grid(linestyle="--", alpha=0.4)
-    ax.set_xlim(-1, max(r * 100 for r in rates) + 1)
+    ax.grid(which="both", linestyle="--", alpha=0.4)
     fig.tight_layout()
     fig.savefig(out, dpi=150)
     plt.close(fig)
@@ -290,17 +300,19 @@ def plot_cdf(results: dict, out: pathlib.Path):
         ax.step(x, y, where="post", label=_fmt_size(kb), color=color, linewidth=2)
     ax.set_xlabel("Temps de transfert (s)")
     ax.set_ylabel("CDF")
-    ax.set_title(f"Distribution des temps de transfert\n"
+    ax.set_title(f"Distribution des temps de transfert (log-log)\n"
                 f"({len(results)} tailles de fichier, de 1 KB à 100 MB)")
     ax.legend(title="Taille fichier", ncol=2, fontsize=8)
-    ax.grid(linestyle="--", alpha=0.4)
-    ax.set_ylim(0, 1.05)
-    # Axe X en log si l'écart entre min et max est > 2 décades
-    all_times = [t for times in results.values() for t in times]
-    if all_times and max(all_times) / max(min(all_times), 1e-6) > 100:
-        ax.set_xscale("log")
-        ax.xaxis.set_major_formatter(ticker.FuncFormatter(
-            lambda v, _: f"{v:.3g} s"))
+    ax.grid(which="both", linestyle="--", alpha=0.4)
+    # Axe X en log
+    ax.set_xscale("log")
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(
+        lambda v, _: f"{v:.3g} s"))
+    # Axe Y en log (CDF de ~0.01 à 1)
+    ax.set_yscale("log")
+    ax.set_ylim(1e-2, 1.05)
+    ax.yaxis.set_major_formatter(ticker.FuncFormatter(
+        lambda v, _: f"{v:.2g}"))
     fig.tight_layout()
     fig.savefig(out, dpi=150)
     plt.close(fig)

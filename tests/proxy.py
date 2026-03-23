@@ -32,8 +32,12 @@ class UDPCapturingProxy:
         d'être corrompu (un octet aléatoire est altéré) avant transmission.
         - Chaque paquet a une probabilité DROP_PROB d'être totalement perdu
         (ni transmis, ni mémorisé dans _pending/_chunks).
-        - Les deux événements sont indépendants ; un paquet peut être à la
-        fois corrompu ET perdu (dans ce cas il est simplement supprimé).
+        - Chaque paquet a une probabilité DUPLICATE_PROB d'être dupliqué,
+        c'est-à-dire envoyé deux fois de suite vers la destination.
+        - Les trois événements sont indépendants ; un paquet peut être à la
+        fois corrompu ET perdu (dans ce cas il est simplement supprimé). Un
+        paquet dupliqué ET corrompu est envoyé deux fois, mais le récepteur
+        les rejettera tous les deux via le CRC.
 
     Usage :
         proxy = UDPCapturingProxy(server_port)
@@ -45,9 +49,10 @@ class UDPCapturingProxy:
     """
 
     # Probabilités réseau imparfait
-    CORRUPT_PROB = 0.10   # 10 % de chance de corruption d'un paquet
-    DROP_PROB    = 0.10   # 10 % de chance de perte totale d'un paquet
-    # Combinées : ~1/5 des paquets sont affectés (corrompus OU perdus OU les deux)
+    CORRUPT_PROB   = 0.10   # 10 % de chance de corruption d'un paquet
+    DROP_PROB      = 0.10   # 10 % de chance de perte totale d'un paquet
+    DUPLICATE_PROB = 0.10   # 10 % de chance de duplication d'un paquet (envoyé deux fois)
+    # Combinées : ~1/4 des paquets sont affectés (corrompus, perdus ou dupliqués)
 
     def __init__(self, server_port: int, host: str = HOST, imperfect_network: bool = False):
         self.server_port = server_port
@@ -77,21 +82,26 @@ class UDPCapturingProxy:
 
     # Simulation réseau imparfait
 
-    def _apply_network_imperfections(self, data: bytes) -> bytes | None:
+    def _apply_network_imperfections(self, sock: socket.socket, data: bytes, dest: tuple) -> bytes | None:
         """
-        Applique aléatoirement perte et/ou corruption au paquet.
+        Applique aléatoirement perte, corruption et/ou duplication au paquet,
+        puis l'envoie vers dest.
 
         Retourne :
-        - None   → paquet perdu (à ignorer, ne pas envoyer ni mémoriser)
-        - bytes  → paquet à transmettre (potentiellement corrompu)
+        - None   → paquet perdu (non transmis, ne pas mémoriser dans _pending/_chunks)
+        - bytes  → paquet effectivement transmis (intact ou corrompu)
 
-        Un paquet corrompu a un octet choisi aléatoirement modifié par XOR
-        avec une valeur non nulle. Son CRC ne correspondra plus, donc
-        protocol.depackage() le rejettera côté récepteur — ce qui garantit
-        qu'il ne sera jamais stocké dans _pending ni dans _chunks.
+        Ordre des événements (indépendants) :
+        1. DROP   : si tiré, le paquet est supprimé (None retourné, rien envoyé).
+        2. CORRUPT: si tiré, un octet aléatoire est altéré par XOR non nul.
+                    Le CRC ne correspondra plus ; protocol.depackage() rejettera
+                    le paquet côté récepteur.
+        3. DUPLICATE:si tiré, le paquet (potentiellement corrompu) est envoyé
+                    une deuxième fois supplémentaire après le premier envoi.
         """
-        dropped   = random.random() < self.DROP_PROB
-        corrupted = random.random() < self.CORRUPT_PROB
+        dropped    = random.random() < self.DROP_PROB
+        corrupted  = random.random() < self.CORRUPT_PROB
+        duplicated = random.random() < self.DUPLICATE_PROB
 
         if dropped:
             # Perte totale : on ne transmet rien
@@ -102,7 +112,13 @@ class UDPCapturingProxy:
             buf = bytearray(data)
             idx = random.randrange(len(buf))
             buf[idx] ^= random.randint(1, 255)   # XOR non nul → octet différent
-            return bytes(buf)
+            data = bytes(buf)
+
+        sock.sendto(data, dest)
+
+        if duplicated:
+            # Duplication : renvoi immédiat d'une copie supplémentaire
+            sock.sendto(data, dest)
 
         return data
 
@@ -131,7 +147,7 @@ class UDPCapturingProxy:
             abs_seqnums.sort()
             return b"".join(self._chunks[orig] for _, orig in abs_seqnums)
 
-    # Boucle interne 
+    # Boucle interne
 
     def _run(self):
         """
@@ -145,8 +161,8 @@ class UDPCapturingProxy:
 
         Si imperfect_network=True, chaque paquet transite par
         _apply_network_imperfections() avant d'être relayé :
-        - None  → paquet silencieusement supprimé (perdu)
-        - bytes → paquet transmis (intact ou corrompu)
+        - None  -> paquet silencieusement supprimé (perdu)
+        - bytes -> paquet transmis (intact ou corrompu, une ou deux fois si dupliqué)
         Les paquets corrompus sont transmis tels quels ; le récepteur les
         détectera via le CRC et les ignorera. Ils ne sont jamais mémorisés
         dans _pending ni _chunks.
@@ -170,25 +186,24 @@ class UDPCapturingProxy:
                     # Paquet venant du client -> vers le serveur
                     client_addr = addr
                     if self.imperfect_network:
-                        to_send = self._apply_network_imperfections(data)
+                        sent = self._apply_network_imperfections(sock, data, server_addr)
                     else:
-                        to_send = data
-                    if to_send is not None:
-                        sock.sendto(to_send, server_addr)
-                        # N'inspecter que le paquet original non corrompu
-                        if to_send == data:
-                            self._inspect_client_packet(data)
-                        # Paquet corrompu : rejeté par le serveur via CRC, rien à mémoriser
+                        sock.sendto(data, server_addr)
+                        sent = data
+                    # N'inspecter que le paquet original non corrompu
+                    if sent is not None and sent == data:
+                        self._inspect_client_packet(data)
+                    # Paquet corrompu : rejeté par le serveur via CRC, rien à mémoriser
                 else:
                     # Paquet venant du serveur -> vers le client
                     if self.imperfect_network:
-                        to_send = self._apply_network_imperfections(data)
+                        sent = self._apply_network_imperfections(sock, data, client_addr) if client_addr else None
                     else:
-                        to_send = data
-                    if to_send is not None and client_addr is not None:
-                        sock.sendto(to_send, client_addr)
+                        if client_addr is not None:
+                            sock.sendto(data, client_addr)
+                        sent = data
                     # N'inspecter le paquet serveur que s'il est intact et transmis
-                    if to_send is not None and to_send == data:
+                    if sent is not None and sent == data:
                         self._inspect_server_packet(data)
                     # Paquet perdu ou corrompu : pas de mémorisation dans _pending/_chunks
 
