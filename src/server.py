@@ -64,10 +64,13 @@ def server_multitache(bind_addr: str, bind_port: int, root_dir: str) -> int:
                             rtt_sec = rtt_ms / 1000.0
                             if 0 < rtt_sec < 10:
                                 etat['rtt'] = 0.875 * etat['rtt'] + 0.125 * rtt_sec
-                            while etat['base'] != seqnum:
-                                if etat['base'] in etat['memoire_envoi']:
-                                    del etat['memoire_envoi'][etat['base']]
-                                etat['base'] = (etat['base'] + 1) % 2048
+                            # Avancer la base seulement si l'ACK est strictement devant
+                            steps = (seqnum - etat['base']) % 2048
+                            if steps < 1024:  # distance raisonnable = l'ACK est bien devant
+                                for _ in range(steps):
+                                    if etat['base'] in etat['memoire_envoi']:
+                                        del etat['memoire_envoi'][etat['base']]
+                                    etat['base'] = (etat['base'] + 1) % 2048
                             if pack_type == protocol.PTYPE_SACK:
                                 packet_s = protocol.decode_sack(payload)
                                 for numero in packet_s:
@@ -81,7 +84,7 @@ def server_multitache(bind_addr: str, bind_port: int, root_dir: str) -> int:
             temps_actuel = time.time()
             for addr, etat in clients.items():
                 # Envoyer les données tant que fenêtre disponible et fichier pas fini
-                while (len(etat['memoire_envoi']) < etat['remote_window'] and len(etat['memoire_envoi']) < 63 and not etat['fichier_fini']):
+                while (len(etat['memoire_envoi']) < etat['remote_window'] and not etat['fichier_fini']):
                     morceau = etat['file'].read(1024)
                     if morceau == b"":
                         etat['fichier_fini'] = True
@@ -92,15 +95,31 @@ def server_multitache(bind_addr: str, bind_port: int, root_dir: str) -> int:
                         etat['prochain_seqnum'], ts_now, morceau
                     )
                     sock.sendto(packet, addr)
-                    etat['memoire_envoi'][etat['prochain_seqnum']] = packet
+                    etat['memoire_envoi'][etat['prochain_seqnum']] = {'packet': packet,'time': time.time()}
                     etat['prochain_seqnum'] = (etat['prochain_seqnum'] + 1) % 2048
+
+                # Retransmission individuelle si timeout dépassé
+                timeout_paquet = max(0.5, etat['rtt'] * 2.5)
+
+                for seq, info in list(etat['memoire_envoi'].items()):
+                    if temps_actuel - info['time'] > timeout_paquet:
+                        sock.sendto(info['packet'], addr)
+                        etat['memoire_envoi'][seq]['time'] = temps_actuel  # reset timer
 
                 if etat['fichier_fini'] and len(etat['memoire_envoi']) == 0 and not etat['fin_envoye']:
                     # seqnum du paquet fin = prochain_seqnum (ce que le client attend)
-                    pkt_fin = protocol.empackage(
-                        protocol.PTYPE_DATA, 0,
-                        etat['prochain_seqnum'], 0, b""
-                    )
+                    if etat['fichier_fini'] and len(etat['memoire_envoi']) == 0:
+                        if not etat['fin_envoye']:
+                            ts_now = int(time.time() * 1000) % (2**32)
+                            pkt_fin = protocol.empackage(protocol.PTYPE_DATA, 0, etat['prochain_seqnum'], ts_now, b"")
+                            sock.sendto(pkt_fin, addr)
+                            etat['fin_envoye'] = True
+                            etat['pkt_fin'] = pkt_fin
+                            etat['fin_time'] = temps_actuel
+                        elif temps_actuel - etat['fin_time'] > max(0.5, etat['rtt'] * 2.5):
+                            # Retransmettre périodiquement jusqu'à expiration
+                            sock.sendto(etat['pkt_fin'], addr)
+                            etat['fin_time'] = temps_actuel  # reset à chaque tentative
                     sock.sendto(pkt_fin, addr)
                     etat['fin_envoye'] = True
                     etat['pkt_fin'] = pkt_fin
@@ -110,8 +129,9 @@ def server_multitache(bind_addr: str, bind_port: int, root_dir: str) -> int:
                 timeout_adaptatif = max(0.5, etat['rtt'] * 2.5)
                 if temps_actuel - etat['dernier_contact'] > timeout_adaptatif:
                     if not etat['fin_envoye']:
-                        for pkt_sauvegarde in etat['memoire_envoi'].values():
-                            sock.sendto(pkt_sauvegarde, addr)
+                        for info in etat['memoire_envoi'].values():
+                            sock.sendto(info['packet'], addr)
+                            info['time'] = temps_actuel
                     elif 'pkt_fin' in etat:
                         # Retransmettre le paquet de fin si pas encore acquitté
                         for _ in range (MAX_RETRANSMIT_FINAL) : sock.sendto(etat['pkt_fin'], addr)

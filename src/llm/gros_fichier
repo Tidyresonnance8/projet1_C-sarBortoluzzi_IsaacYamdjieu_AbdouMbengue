@@ -1,0 +1,23 @@
+Oui 🙂 Voici un exemple de texte d’environ **3500–3800 caractères** que tu peux mettre dans ton fichier texte.
+
+---
+
+L’intelligence artificielle est aujourd’hui l’un des domaines les plus fascinants de l’informatique moderne. Depuis plusieurs décennies, des chercheurs du monde entier travaillent à concevoir des systèmes capables de réaliser des tâches qui nécessitaient auparavant l’intelligence humaine. Ces tâches incluent par exemple la reconnaissance d’images, la compréhension du langage naturel, la prise de décision dans des environnements complexes ou encore l’apprentissage automatique à partir de grandes quantités de données.
+
+Au départ, les premiers systèmes d’intelligence artificielle reposaient principalement sur des règles écrites à la main par des experts. On appelait cela des systèmes experts. Ils fonctionnaient bien pour certains problèmes précis, mais ils étaient souvent difficiles à maintenir et incapables de s’adapter à des situations nouvelles. Avec l’arrivée de l’apprentissage automatique, aussi appelé machine learning, les chercheurs ont commencé à créer des modèles capables d’apprendre directement à partir des données plutôt que de suivre uniquement des règles prédéfinies.
+
+L’apprentissage automatique repose sur l’idée que l’on peut entraîner un programme informatique à reconnaître des motifs dans des données. Par exemple, si l’on fournit à un modèle des milliers d’images de chats et de chiens, accompagnées de leurs étiquettes, il peut apprendre progressivement à distinguer les deux animaux. Cette capacité d’apprentissage a permis de grandes avancées dans de nombreux domaines, comme la vision par ordinateur, la traduction automatique ou encore la recommandation de contenu sur internet.
+
+Plus récemment, les progrès dans la puissance de calcul et la disponibilité massive de données ont permis l’essor de l’apprentissage profond, ou deep learning. Cette approche utilise des réseaux de neurones artificiels composés de nombreuses couches de calcul. Chaque couche transforme les données d’une certaine manière afin d’extraire progressivement des informations plus abstraites. Par exemple, dans un système de reconnaissance d’images, les premières couches peuvent détecter des formes simples comme des lignes ou des contours, tandis que les couches plus profondes peuvent reconnaître des objets complets.
+
+Aujourd’hui, l’intelligence artificielle est utilisée dans un grand nombre d’applications du quotidien. Les assistants vocaux, les systèmes de recommandation de films ou de musique, les voitures autonomes en développement ou encore certains outils de diagnostic médical reposent sur des techniques issues de l’IA. Ces technologies permettent d’automatiser certaines tâches et d’améliorer l’efficacité dans de nombreux secteurs.
+
+Cependant, le développement de l’intelligence artificielle soulève également plusieurs questions importantes. Les chercheurs et les décideurs doivent réfléchir aux enjeux éthiques liés à l’utilisation de ces systèmes. Par exemple, il est essentiel de s’assurer que les algorithmes ne reproduisent pas ou n’amplifient pas des biais présents dans les données utilisées pour les entraîner. De plus, la question de la transparence et de l’explicabilité des modèles est devenue un sujet majeur, car certains systèmes complexes sont difficiles à interpréter.
+
+En parallèle, de nombreux scientifiques continuent d’explorer de nouvelles approches pour rendre les systèmes d’intelligence artificielle plus robustes, plus efficaces et plus économes en énergie. L’objectif n’est pas seulement de créer des machines performantes, mais aussi de développer des technologies utiles pour la société dans son ensemble.
+
+Ainsi, l’intelligence artificielle représente à la fois un formidable outil technologique et un domaine de recherche en constante évolution. Les progrès réalisés dans ce domaine au cours des prochaines années pourraient transformer profondément de nombreux aspects de notre vie quotidienne, tout en ouvrant de nouvelles perspectives pour la science et l’innovation.
+
+---
+
+Si tu veux, je peux aussi te montrer **la commande exacte dans le terminal pour créer le fichier `small` et y coller ce texte** (vu que tu dois le mettre dans ton dossier `llm`).
