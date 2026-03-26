@@ -31,8 +31,20 @@ test-v:
 test-unit:
 	$(PYTEST) tests/test_srtp.py -v
 
+test-protocol:
+	$(PYTEST) tests/test_srtp.py -v
+
+test-srtp:
+	$(PYTEST) tests/test_srtp.py -v
+
 test-integration:
 	$(PYTEST) tests/test_integration.py -v
+
+test-interoperabilite:
+	$(PYTEST) tests/test_interop.py -v
+
+plots:
+	$(PYTEST) tests/Benchmark.py
 
 server:
 	$(PYTHON) src/server.py $(SERVER_ADDR) $(SERVER_PORT)

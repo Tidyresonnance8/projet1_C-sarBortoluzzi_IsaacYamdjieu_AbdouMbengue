@@ -22,20 +22,32 @@ SRTP implémente un transfert de fichiers fiable par-dessus UDP en combinant :
 ```
 .
 ├── src/
-│   ├── protocol.py      # Encodage/décodage des paquets SRTP
-│   ├── server.py        # Serveur UDP multi-clients
-│   └── client.py        # Client UDP (requête HTTP 0.9 simplifiée)
+│   ├── protocol.py         # Encodage/décodage des paquets SRTP
+│   ├── server.py           # Serveur UDP multi-clients
+│   └── client.py           # Client UDP (requête HTTP 0.9 simplifiée)
 ├── tests/
-│   ├── test_srtp.py         # Tests unitaires du protocole
-│   ├── test_integration.py  # Tests d'intégration et d'interopérabilité
-│   ├── proxy.py             # Proxy UDP capturant (simulation réseau imparfait)
-│   ├── Helpers.py           # Utilitaires partagés par les tests
-│   └── Benchmark.py         # Benchmark de performances (débit, pertes, CDF)
-├── tools/               # Binaires de référence (optionnels, voir §Interopérabilité)
-│   ├── server           # Serveur de référence (fourni sur Moodle)
-│   └── client           # Client de référence (fourni sur Moodle)
-├── test_outputs/        # Fichiers .txt reçus persistés après les tests
-├── plots/               # Graphiques générés par le benchmark
+│   ├── test_srtp.py        # Tests unitaires du protocole
+│   ├── test_integration.py # Tests d'intégration
+│   ├── test_interop.py     # Tests d'interopérabilité
+│   ├── proxy.py            # Proxy UDP capturant (simulation réseau imparfait)
+│   ├── Helpers.py          # Utilitaires partagés par les tests
+│   └── Benchmark.py        # Benchmark de performances (débit, pertes, CDF)
+├── tools/                  # Outils pour tester l'interopérabilité (optionnels)
+│   ├── server              # Serveur de référence (fourni sur Moodle)
+│   ├── client              # Client de référence (fourni sur Moodle)
+│   ├── groupe_20/          # Codes du groupe 20
+│   │   ├── server.py       # Server du groupe 20
+│   │   └── client.py       # Client du groupe 20
+│   ├── groupe_42/          # Codes du groupe 42
+│   │   ├── server.py       # Server du groupe 42
+│   │   └── client.py       # Client du groupe 42
+│   ├── groupe_61/          # Codes du groupe 61
+│   │   ├── server.py       # Server du groupe 61
+│   │   └── client.py       # Client du groupe 61
+├── test_outputs/           # Fichiers .txt reçus persistés après les tests
+├── plots/                  # Graphiques générés par le benchmark
+├── Makefile                
+├── rapport.pdf
 └── README.md
 ```
 
@@ -63,11 +75,11 @@ Chaque paquet SRTP a la structure suivante :
 
 **Types de paquets :**
 
-| Valeur | Type   | Description                            |
-|--------|--------|----------------------------------------|
+| Valeur | Type   | Description                               |
+|--------|--------|-------------------------------------------|
 | 1      | DATA   | Données (requête client ou chunk serveur) |
-| 2      | ACK    | Acquittement cumulatif                 |
-| 3      | SACK   | Acquittement sélectif                  |
+| 2      | ACK    | Acquittement cumulatif                    |
+| 3      | SACK   | Acquittement sélectif                     |
 
 **Fin de transfert :** un paquet DATA avec payload vide (`b""`) signale la fin du fichier.
 
@@ -113,7 +125,7 @@ L'URL utilise le format `http://[<IPv6>]:<port>/<chemin>`. Le protocole de trans
 ### Tests unitaires (protocol.py)
 
 ```bash
-pytest tests/test_srtp.py -v
+make test-protocol
 ```
 
 Couvre : `empackage`, `depackage`, `encode_sack`, `decode_sack`, intégration encode→paquet→décode, valeurs limites, corruptions CRC.
@@ -121,21 +133,26 @@ Couvre : `empackage`, `depackage`, `encode_sack`, `decode_sack`, intégration en
 ### Tests d'intégration
 
 ```bash
-pytest tests/test_integration.py -v
+make test-integration
+```
+Teste notre server contre notre client sur loopback, avedc des fichiers bianires et texte en condition parfaite et en réseau imparfait avec pertes, corruption et dédoublement de paquets via proxy UDP.
+
+### Tests d'interopérabilité
+
+```bash
+make test-interoperabilite
 ```
 
-Cinq catégories :
+Quatre catégories :
 
 | Catégorie | Description |
 |-----------|-------------|
-| `TestClientServeur` | Notre server.py + client.py sur loopback, fichiers binaires et texte |
-| `TestReseauImparfait` | Transferts avec pertes et corruption via proxy UDP |
-| `TestInteroperabilite` (1) | Sanity check : server_ref + client_ref |
-| `TestInteroperabilite` (2) | Notre server.py + client_ref |
-| `TestInteroperabilite` (3) | server_ref + notre client.py |
-| `TestInteroperabilite` (4) | Notre server.py + N clients_ref simultanés |
+| `TestInteroperabilite` (1) | Sanity check : server_interop + client_interop   |
+| `TestInteroperabilite` (2) | Notre server.py + client_interop                 |
+| `TestInteroperabilite` (3) | server_interop + notre client.py                 |
+| `TestInteroperabilite` (4) | Notre server.py + N clients_interop simultanés   |
 
-Les tests d'interopérabilité sont **skippés automatiquement** si les binaires `tools/server` et `tools/client` sont absents.
+Les tests d'interopérabilité sont **skippés automatiquement** si les clients ou server nécessaires sont absents. Les tests d'interopérabilité sont effectuer en conditions parfaites et imparfaites (corruptions, pertes et dédoublements).
 
 ### Lancer tous les tests
 
@@ -162,16 +179,15 @@ Le proxy UDP capturant (`proxy.py`) est utilisé pour intercepter ce que `client
 ## Benchmark
 
 ```bash
-python3 Benchmark.py
+make plots
 ```
 
-Génère trois graphiques dans `plots/` :
+Génère deux graphiques dans `plots/` :
 
 | Fichier | Contenu |
 |---------|---------|
 | `throughput_vs_filesize.png` | Débit (KB/s) en fonction de la taille du fichier (1 KB → 100 MB) |
-| `throughput_vs_loss.png` | Débit en fonction du taux de perte simulé (0 % → 30 %) |
-| `latency_cdf.png` | Distribution (CDF) des temps de transfert par taille |
+| `throughput_vs_loss.png` | Débit en fonction du taux de perte simulé (0 % → 30 %) pour un transfert d'un fichier de 512 KB|
 
 ---
 
@@ -197,3 +213,4 @@ Les paquets corrompus sont détectés et rejetés par le récepteur via le CRC ;
 - Le **client** retransmet sa requête GET si aucune réponse n'arrive dans les 5 premières tentatives (2 s chacune), puis abandonne proprement.
 - Le **seqnum** se fait sur 11 bits (modulo 2048) ; la fenêtre maximale est de 63 paquets, ce qui garantit l'absence d'ambiguïté lors du wrap-around.
 - Les **SACK** encodent les numéros de séquence en champs de 11 bits compactés, alignés sur 32 bits.
+- Le champ **Timestamp** a été utilisé pour implémenter un timeout adaptatif au RTT (max de 0.5 et 2.5 fois le RTT estimé avec fenêtre glissante).
