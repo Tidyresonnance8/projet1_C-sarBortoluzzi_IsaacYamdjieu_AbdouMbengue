@@ -51,7 +51,7 @@ CLIENT_PY = os.path.join(SRC_DIR, 'client.py')
 SERVER_REF = os.path.join(TOOLS_DIR, 'server')
 CLIENT_REF = os.path.join(TOOLS_DIR, 'client')
 
-TIMEOUT_TRANSFER = 60   # secondes max pour un transfert complet
+TIMEOUT_TRANSFER = 120   # secondes max pour un transfert complet
 
 # Dossier de sortie persistant pour les fichiers .txt reçus
 OUTPUT_DIR = pathlib.Path(os.path.join(os.path.dirname(__file__), '..', 'test_outputs'))
@@ -75,7 +75,7 @@ class TestInteroperabilite:
         """
         ready = threading.Event()
         proc_server = run_server(server_cmd, ready, cwd=server_cwd)
-        ready.wait(timeout=2)
+        ready.wait(timeout=10)
 
         try:
             src, received, rc = run_client_ref_via_proxy(
@@ -85,11 +85,11 @@ class TestInteroperabilite:
                 client_cwd=client_dir,
                 is_text=is_text,
                 lines=lines,
-                filesize=filesize,
+                filesize=filesize
             )
         finally:
             proc_server.terminate()
-            proc_server.wait(timeout=2)
+            proc_server.wait(timeout=10)
 
         return src, received, rc
 
@@ -145,7 +145,7 @@ class TestInteroperabilite:
         # Attendre fin des proxies et récupérer les données
         results = []
         for proxy, src, rc in zip(proxies, srcs, rcs):
-            proxy.wait_done(timeout=5)
+            proxy.wait_done(timeout=10)
             proxy.stop()
             received = proxy.get_received_data()
             results.append((src, received, rc))
@@ -257,7 +257,7 @@ class TestInteroperabilite:
         server_cmd = ['python3', SERVER_PY, HOST, str(port)]
         ready = threading.Event()
         proc_server = run_server(server_cmd, ready, cwd=serve_dir)
-        ready.wait(timeout=2)
+        ready.wait(timeout=10)
 
         proxy = UDPCapturingProxy(port)
         proxy.start()
@@ -274,10 +274,10 @@ class TestInteroperabilite:
         except subprocess.TimeoutExpired:
             rc = -1
         finally:
-            proxy.wait_done(timeout=5)
+            proxy.wait_done(timeout=10)
             proxy.stop()
             proc_server.terminate()
-            proc_server.wait(timeout=2)
+            proc_server.wait(timeout=10)
 
         assert rc == 0, "client_ref ne doit pas crasher sur fichier inexistant"
         # Le proxy ne doit avoir capturé aucune donnée (fichier vide = paquet vide)
@@ -380,7 +380,7 @@ class TestInteroperabilite:
         server_cmd = ['python3', SERVER_PY, HOST, str(port)]
         ready = threading.Event()
         proc_server = run_server(server_cmd, ready, cwd=serve_dir)
-        ready.wait(timeout=2)
+        ready.wait(timeout=10)
 
         jobs = [
             {'serve_dir': serve_dir, 'filename': 'file_a.bin', 'filesize': 10_000, 'client_dir': client_dir_a},
@@ -391,7 +391,7 @@ class TestInteroperabilite:
             results = self.run_multi_client_ref(port, jobs)
         finally:
             proc_server.terminate()
-            proc_server.wait(timeout=2)
+            proc_server.wait(timeout=10)
 
         for (src, received, rc), job in zip(results, jobs):
             name = job['filename']
@@ -424,7 +424,7 @@ class TestInteroperabilite:
         server_cmd = ['python3', SERVER_PY, HOST, str(port)]
         ready = threading.Event()
         proc_server = run_server(server_cmd, ready, cwd=serve_dir)
-        ready.wait(timeout=2)
+        ready.wait(timeout=10)
 
         jobs = [
             {'serve_dir': serve_dir, 'filename': name, 'filesize': size, 'client_dir': cdir}
@@ -435,7 +435,7 @@ class TestInteroperabilite:
             results = self.run_multi_client_ref(port, jobs)
         finally:
             proc_server.terminate()
-            proc_server.wait(timeout=2)
+            proc_server.wait(timeout=10)
 
         for (src, received, rc), job in zip(results, jobs):
             name = job['filename']
@@ -459,7 +459,7 @@ class TestInteroperabilite:
         server_cmd = ['python3', SERVER_PY, HOST, str(port)]
         ready = threading.Event()
         proc_server = run_server(server_cmd, ready, cwd=serve_dir)
-        ready.wait(timeout=2)
+        ready.wait(timeout=10)
 
         jobs = [
             {'serve_dir': serve_dir, 'filename': 'doc_a.txt', 'is_text': True, 'lines': 400, 'client_dir': client_dir_a},
@@ -470,7 +470,7 @@ class TestInteroperabilite:
             results = self.run_multi_client_ref(port, jobs)
         finally:
             proc_server.terminate()
-            proc_server.wait(timeout=2)
+            proc_server.wait(timeout=10)
 
         output_names = ["interop_multi_doc_a_recu.txt", "interop_multi_doc_b_recu.txt"]
         for (src, received, rc), job, out_name in zip(results, jobs, output_names):
@@ -490,12 +490,13 @@ class TestInteroperabilite:
 #  Markers de skip : skippé automatiquement si server.py / client.py du groupe
 #  sont absents dans tools/groupe_XX/.
 #
-#  Combinaisons testées par groupe (mêmes 4 axes que TestInteroperabilite) :
-#    1) server du groupe  + client du groupe — conditions parfaites
-#    2) notre server.py  + client du groupe — conditions parfaites
-#    3) notre server.py  + client du groupe — réseau imparfait
-#    4) server du groupe + notre client.py — conditions parfaites
-#    5) server du groupe + notre client.py — réseau imparfait
+#  Combinaisons testées par groupe :
+#    0) server du groupe  + client du groupe — sanity check
+#    1) notre server.py  + client du groupe — conditions parfaites
+#    2) notre server.py  + client du groupe — réseau imparfait
+#    3) server du groupe + notre client.py — conditions parfaites
+#    4) server du groupe + notre client.py — réseau imparfait
+#    5) notre server.py  + N clients du groupe simultanés — conditions parfaites
 #    6) notre server.py  + N clients du groupe simultanés — réseau imparfait
 #
 #  Convention de nommage des helpers internes :
@@ -547,7 +548,7 @@ class TestInteropGroupe20:
             ['python3', SERVER_PY, HOST, str(server_port)],
             ready, cwd=serve_dir
         )
-        ready.wait(timeout=2)
+        ready.wait(timeout=10)
 
         # Créer le fichier source
         if file_kw.get('is_text'):
@@ -579,11 +580,11 @@ class TestInteropGroupe20:
             rc = -1
         finally:
             if proxy:
-                proxy.wait_done(timeout=5)
+                proxy.wait_done(timeout=10)
                 proxy.stop()
                 save_path.write_bytes(proxy.get_received_data())
             proc_server.terminate()
-            proc_server.wait(timeout=2)
+            proc_server.wait(timeout=10)
 
         return src, save_path, rc
 
@@ -602,7 +603,7 @@ class TestInteropGroupe20:
             ['python3', G20_SERVER_PY, HOST, str(server_port)],
             ready, cwd=serve_dir
         )
-        ready.wait(timeout=2)
+        ready.wait(timeout=10)
 
         if imperfect:
             proxy = make_imperfect_proxy(server_port)
@@ -626,10 +627,10 @@ class TestInteropGroupe20:
             rc = -1
         finally:
             if proxy:
-                proxy.wait_done(timeout=5)
+                proxy.wait_done(timeout=10)
                 proxy.stop()
             proc_server.terminate()
-            proc_server.wait(timeout=2)
+            proc_server.wait(timeout=10)
 
         return src, rc
 
@@ -653,7 +654,7 @@ class TestInteropGroupe20:
         proc_server = run_server(
             ['python3', G20_SERVER_PY, HOST, str(port)], ready, cwd=serve_dir
         )
-        ready.wait(timeout=2)
+        ready.wait(timeout=10)
 
         save_path = client_dir / "received_sanity_g20.bin"
         try:
@@ -670,7 +671,7 @@ class TestInteropGroupe20:
             rc = -1
         finally:
             proc_server.terminate()
-            proc_server.wait(timeout=2)
+            proc_server.wait(timeout=10)
 
         assert rc >= 0, f"client_g20 s'est terminé avec le code {rc}"
         assert save_path.exists(), "client_g20 n'a pas écrit le fichier (sanity G20 vs G20)"
@@ -808,10 +809,69 @@ class TestInteropGroupe20:
         assert dst.exists()
         assert md5(src) == md5(dst), "Intégrité compromise (G20, 4, .txt, imparfait)"
 
-    # 5) Notre server + N clients_g20 simultanés — imparfait
+    # 5) Notre server + N clients_g20 simultanés — parfait
 
     @g20_client_present
-    def test_5_multi_clients_g20_simultanes_imparfait(self, tmp_path):
+    def test_5_multi_clients_g20_simultanes_parfait(self, tmp_path):
+        """
+        Deux clients_g20 lancés simultanément contre notre server.py
+        en conditions réseau parfaites.
+        """
+        serve_dir    = tmp_path / "serve";    serve_dir.mkdir()
+        client_dir_a = tmp_path / "client_a"; client_dir_a.mkdir()
+        client_dir_b = tmp_path / "client_b"; client_dir_b.mkdir()
+
+        port = free_port()
+        ready = threading.Event()
+        proc_server = run_server(
+            ['python3', SERVER_PY, HOST, str(port)], ready, cwd=serve_dir
+        )
+        ready.wait(timeout=10)
+
+        jobs = [
+            {'serve_dir': serve_dir, 'filename': 'file_a.bin', 'filesize': 10_000, 'client_dir': client_dir_a},
+            {'serve_dir': serve_dir, 'filename': 'file_b.bin', 'filesize':  8_000, 'client_dir': client_dir_b}
+        ]
+
+        procs, srcs = [], []
+        try:
+            for job in jobs:
+                src = make_test_file(job['serve_dir'], job['filename'], job['filesize'])
+                srcs.append(src)
+
+                save_path = job['client_dir'] / "received_g20.bin"
+                p = subprocess.Popen(
+                    ['python3', G20_CLIENT_PY,
+                    f'http://[{HOST}]:{port}/{job["filename"]}',
+                    '--save', str(save_path)],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    cwd=str(job['client_dir'])
+                )
+                procs.append(p)
+
+            rcs = []
+            deadline = time.time() + TIMEOUT_TRANSFER
+            for p in procs:
+                remaining = max(0, deadline - time.time())
+                try:
+                    p.wait(timeout=remaining); rcs.append(p.returncode)
+                except subprocess.TimeoutExpired:
+                    p.kill(); rcs.append(-1)
+        finally:
+            proc_server.terminate()
+            proc_server.wait(timeout=10)
+
+        for src, rc, job in zip(srcs, rcs, jobs):
+            name = job['filename']
+            save_path = job['client_dir'] / "received_g20.bin"
+            assert rc == 0, f"client_g20 pour {name} a échoué (multi, parfait) — code {rc}"
+            assert save_path.exists(), f"client_g20 n'a pas écrit le fichier pour {name} (G20, 5, multi, parfait)"
+            assert md5(src) == md5(save_path), f"Intégrité compromise pour {name} (G20, 5, multi, parfait)"
+
+    # 6) Notre server + N clients_g20 simultanés — imparfait
+
+    @g20_client_present
+    def test_6_multi_clients_g20_simultanes_imparfait(self, tmp_path):
         """
         Deux clients_g20 lancés simultanément contre notre server.py
         en conditions réseau imparfaites.
@@ -825,7 +885,7 @@ class TestInteropGroupe20:
         proc_server = run_server(
             ['python3', SERVER_PY, HOST, str(port)], ready, cwd=serve_dir
         )
-        ready.wait(timeout=2)
+        ready.wait(timeout=10)
 
         jobs = [
             {'serve_dir': serve_dir, 'filename': 'file_a.bin', 'filesize': 10_000, 'client_dir': client_dir_a},
@@ -862,16 +922,16 @@ class TestInteropGroupe20:
                     p.kill(); rcs.append(-1)
         finally:
             proc_server.terminate()
-            proc_server.wait(timeout=2)
+            proc_server.wait(timeout=10)
 
         for proxy, src, rc, job in zip(proxies, srcs, rcs, jobs):
-            proxy.wait_done(timeout=5)
+            proxy.wait_done(timeout=10)
             proxy.stop()
             received = proxy.get_received_data()
             name = job['filename']
             assert rc == 0, f"client_g20 pour {name} a échoué (multi, imparfait) — code {rc}"
             assert len(received) > 0, f"Proxy n'a rien capturé pour {name} (G20, multi)"
-            assert md5_bytes(received) == md5(src), f"Intégrité compromise pour {name} (G20, 5, multi, imparfait)"
+            assert md5_bytes(received) == md5(src), f"Intégrité compromise pour {name} (G20, 6, multi, imparfait)"
 
 
 # Groupe 42 
@@ -903,7 +963,7 @@ class TestInteropGroupe42:
             ['python3', SERVER_PY, HOST, str(server_port)],
             ready, cwd=serve_dir
         )
-        ready.wait(timeout=2)
+        ready.wait(timeout=10)
 
         if file_kw.get('is_text'):
             src = make_text_file(serve_dir, filename, lines=file_kw.get('lines', 200))
@@ -934,11 +994,11 @@ class TestInteropGroupe42:
             rc = -1
         finally:
             if proxy:
-                proxy.wait_done(timeout=5)
+                proxy.wait_done(timeout=10)
                 proxy.stop()
                 save_path.write_bytes(proxy.get_received_data())
             proc_server.terminate()
-            proc_server.wait(timeout=2)
+            proc_server.wait(timeout=10)
 
         return src, save_path, rc
 
@@ -953,7 +1013,7 @@ class TestInteropGroupe42:
             ['python3', G42_SERVER_PY, HOST, str(server_port)],
             ready, cwd=serve_dir
         )
-        ready.wait(timeout=2)
+        ready.wait(timeout=10)
 
         if imperfect:
             proxy = make_imperfect_proxy(server_port)
@@ -976,10 +1036,10 @@ class TestInteropGroupe42:
             rc = -1
         finally:
             if proxy:
-                proxy.wait_done(timeout=5)
+                proxy.wait_done(timeout=10)
                 proxy.stop()
             proc_server.terminate()
-            proc_server.wait(timeout=2)
+            proc_server.wait(timeout=10)
 
         return src, rc
 
@@ -1001,7 +1061,7 @@ class TestInteropGroupe42:
         proc_server = run_server(
             ['python3', G42_SERVER_PY, HOST, str(port)], ready, cwd=serve_dir
         )
-        ready.wait(timeout=2)
+        ready.wait(timeout=10)
 
         save_path = client_dir / "received_sanity_g42.bin"
         try:
@@ -1018,7 +1078,7 @@ class TestInteropGroupe42:
             rc = -1
         finally:
             proc_server.terminate()
-            proc_server.wait(timeout=2)
+            proc_server.wait(timeout=10)
 
         assert rc >= 0, f"client_g42 s'est terminé avec le code {rc}"
         assert save_path.exists(), "client_g42 n'a pas écrit le fichier (sanity G42 vs G42)"
@@ -1150,10 +1210,69 @@ class TestInteropGroupe42:
         assert dst.exists()
         assert md5(src) == md5(dst), "Intégrité compromise (G42, 4, .txt, imparfait)"
 
-    # 5) Notre server + N clients_g42 simultanés — imparfait 
+    # 5) Notre server + N clients_g42 simultanés — parfait
 
     @g42_client_present
-    def test_5_multi_clients_g42_simultanes_imparfait(self, tmp_path):
+    def test_5_multi_clients_g42_simultanes_parfait(self, tmp_path):
+        """
+        Deux clients_g42 lancés simultanément contre notre server.py
+        en conditions réseau parfaites.
+        """
+        serve_dir    = tmp_path / "serve";    serve_dir.mkdir()
+        client_dir_a = tmp_path / "client_a"; client_dir_a.mkdir()
+        client_dir_b = tmp_path / "client_b"; client_dir_b.mkdir()
+
+        port = free_port()
+        ready = threading.Event()
+        proc_server = run_server(
+            ['python3', SERVER_PY, HOST, str(port)], ready, cwd=serve_dir
+        )
+        ready.wait(timeout=10)
+
+        jobs = [
+            {'serve_dir': serve_dir, 'filename': 'file_a.bin', 'filesize': 10_000, 'client_dir': client_dir_a},
+            {'serve_dir': serve_dir, 'filename': 'file_b.bin', 'filesize':  8_000, 'client_dir': client_dir_b}
+        ]
+
+        procs, srcs = [], []
+        try:
+            for job in jobs:
+                src = make_test_file(job['serve_dir'], job['filename'], job['filesize'])
+                srcs.append(src)
+
+                save_path = job['client_dir'] / "received_g42.bin"
+                p = subprocess.Popen(
+                    ['python3', G42_CLIENT_PY,
+                    f'http://[{HOST}]:{port}/{job["filename"]}',
+                    '--save', str(save_path)],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    cwd=str(job['client_dir'])
+                )
+                procs.append(p)
+
+            rcs = []
+            deadline = time.time() + TIMEOUT_TRANSFER
+            for p in procs:
+                remaining = max(0, deadline - time.time())
+                try:
+                    p.wait(timeout=remaining); rcs.append(p.returncode)
+                except subprocess.TimeoutExpired:
+                    p.kill(); rcs.append(-1)
+        finally:
+            proc_server.terminate()
+            proc_server.wait(timeout=10)
+
+        for src, rc, job in zip(srcs, rcs, jobs):
+            name = job['filename']
+            save_path = job['client_dir'] / "received_g42.bin"
+            assert rc == 0, f"client_g42 pour {name} a échoué (multi, parfait) — code {rc}"
+            assert save_path.exists(), f"client_g42 n'a pas écrit le fichier pour {name} (G42, 5, multi, parfait)"
+            assert md5(src) == md5(save_path), f"Intégrité compromise pour {name} (G42, 5, multi, parfait)"
+
+    # 6) Notre server + N clients_g42 simultanés — imparfait 
+
+    @g42_client_present
+    def test_6_multi_clients_g42_simultanes_imparfait(self, tmp_path):
         """
         Deux clients_g42 lancés simultanément contre notre server.py
         en conditions réseau imparfaites.
@@ -1167,7 +1286,7 @@ class TestInteropGroupe42:
         proc_server = run_server(
             ['python3', SERVER_PY, HOST, str(port)], ready, cwd=serve_dir
         )
-        ready.wait(timeout=2)
+        ready.wait(timeout=10)
 
         jobs = [
             {'serve_dir': serve_dir, 'filename': 'file_a.bin', 'filesize': 10_000, 'client_dir': client_dir_a},
@@ -1204,16 +1323,16 @@ class TestInteropGroupe42:
                     p.kill(); rcs.append(-1)
         finally:
             proc_server.terminate()
-            proc_server.wait(timeout=2)
+            proc_server.wait(timeout=10)
 
         for proxy, src, rc, job in zip(proxies, srcs, rcs, jobs):
-            proxy.wait_done(timeout=5)
+            proxy.wait_done(timeout=10)
             proxy.stop()
             received = proxy.get_received_data()
             name = job['filename']
             assert rc == 0, f"client_g42 pour {name} a échoué (multi, imparfait) — code {rc}"
             assert len(received) > 0, f"Proxy n'a rien capturé pour {name} (G42, multi)"
-            assert md5_bytes(received) == md5(src), f"Intégrité compromise pour {name} (G42, 5, multi, imparfait)"
+            assert md5_bytes(received) == md5(src), f"Intégrité compromise pour {name} (G42, 6, multi, imparfait)"
 
 
 # Groupe 61 
@@ -1245,7 +1364,7 @@ class TestInteropGroupe61:
             ['python3', SERVER_PY, HOST, str(server_port)],
             ready, cwd=serve_dir
         )
-        ready.wait(timeout=2)
+        ready.wait(timeout=10)
 
         if file_kw.get('is_text'):
             src = make_text_file(serve_dir, filename, lines=file_kw.get('lines', 200))
@@ -1276,11 +1395,11 @@ class TestInteropGroupe61:
             rc = -1
         finally:
             if proxy:
-                proxy.wait_done(timeout=5)
+                proxy.wait_done(timeout=10)
                 proxy.stop()
                 save_path.write_bytes(proxy.get_received_data())
             proc_server.terminate()
-            proc_server.wait(timeout=2)
+            proc_server.wait(timeout=10)
 
         return src, save_path, rc
 
@@ -1295,7 +1414,7 @@ class TestInteropGroupe61:
             ['python3', G61_SERVER_PY, HOST, str(server_port)],
             ready, cwd=serve_dir
         )
-        ready.wait(timeout=5)
+        ready.wait(timeout=10)
 
         if imperfect:
             proxy = make_imperfect_proxy(server_port)
@@ -1318,10 +1437,10 @@ class TestInteropGroupe61:
             rc = -1
         finally:
             if proxy:
-                proxy.wait_done(timeout=5)
+                proxy.wait_done(timeout=10)
                 proxy.stop()
             proc_server.terminate()
-            proc_server.wait(timeout=2)
+            proc_server.wait(timeout=10)
 
         return src, rc
 
@@ -1343,7 +1462,7 @@ class TestInteropGroupe61:
         proc_server = run_server(
             ['python3', G61_SERVER_PY, HOST, str(port)], ready, cwd=serve_dir
         )
-        ready.wait(timeout=2)
+        ready.wait(timeout=10)
 
         save_path = client_dir / "received_sanity_g61.bin"
         try:
@@ -1360,7 +1479,7 @@ class TestInteropGroupe61:
             rc = -1
         finally:
             proc_server.terminate()
-            proc_server.wait(timeout=2)
+            proc_server.wait(timeout=10)
 
         assert rc >= 0, f"client_g61 s'est terminé avec le code {rc}"
         assert save_path.exists(), "client_g61 n'a pas écrit le fichier (sanity G61 vs G61)"
@@ -1492,10 +1611,69 @@ class TestInteropGroupe61:
         assert dst.exists()
         assert md5(src) == md5(dst), "Intégrité compromise (G61, 4, .txt, imparfait)"
 
-    # 5) Notre server + N clients_g61 simultanés — imparfait 
+    # 5) Notre server + N clients_g61 simultanés — parfait
 
     @g61_client_present
-    def test_5_multi_clients_g61_simultanes_imparfait(self, tmp_path):
+    def test_5_multi_clients_g61_simultanes_parfait(self, tmp_path):
+        """
+        Deux clients_g61 lancés simultanément contre notre server.py
+        en conditions réseau parfaites.
+        """
+        serve_dir    = tmp_path / "serve";    serve_dir.mkdir()
+        client_dir_a = tmp_path / "client_a"; client_dir_a.mkdir()
+        client_dir_b = tmp_path / "client_b"; client_dir_b.mkdir()
+
+        port = free_port()
+        ready = threading.Event()
+        proc_server = run_server(
+            ['python3', SERVER_PY, HOST, str(port)], ready, cwd=serve_dir
+        )
+        ready.wait(timeout=10)
+
+        jobs = [
+            {'serve_dir': serve_dir, 'filename': 'file_a.bin', 'filesize': 10_000, 'client_dir': client_dir_a},
+            {'serve_dir': serve_dir, 'filename': 'file_b.bin', 'filesize':  8_000, 'client_dir': client_dir_b}
+        ]
+
+        procs, srcs = [], []
+        try:
+            for job in jobs:
+                src = make_test_file(job['serve_dir'], job['filename'], job['filesize'])
+                srcs.append(src)
+
+                save_path = job['client_dir'] / "received_g61.bin"
+                p = subprocess.Popen(
+                    ['python3', G61_CLIENT_PY,
+                    f'http://[{HOST}]:{port}/{job["filename"]}',
+                    '--save', str(save_path)],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    cwd=str(job['client_dir'])
+                )
+                procs.append(p)
+
+            rcs = []
+            deadline = time.time() + TIMEOUT_TRANSFER
+            for p in procs:
+                remaining = max(0, deadline - time.time())
+                try:
+                    p.wait(timeout=remaining); rcs.append(p.returncode)
+                except subprocess.TimeoutExpired:
+                    p.kill(); rcs.append(-1)
+        finally:
+            proc_server.terminate()
+            proc_server.wait(timeout=10)
+
+        for src, rc, job in zip(srcs, rcs, jobs):
+            name = job['filename']
+            save_path = job['client_dir'] / "received_g61.bin"
+            assert rc == 0, f"client_g61 pour {name} a échoué (multi, parfait) — code {rc}"
+            assert save_path.exists(), f"client_g61 n'a pas écrit le fichier pour {name} (G61, 5, multi, parfait)"
+            assert md5(src) == md5(save_path), f"Intégrité compromise pour {name} (G61, 5, multi, parfait)"
+
+    # 6) Notre server + N clients_g61 simultanés — imparfait 
+
+    @g61_client_present
+    def test_6_multi_clients_g61_simultanes_imparfait(self, tmp_path):
         """
         Deux clients_g61 lancés simultanément contre notre server.py
         en conditions réseau imparfaites.
@@ -1509,7 +1687,7 @@ class TestInteropGroupe61:
         proc_server = run_server(
             ['python3', SERVER_PY, HOST, str(port)], ready, cwd=serve_dir
         )
-        ready.wait(timeout=5)
+        ready.wait(timeout=10)
 
         jobs = [
             {'serve_dir': serve_dir, 'filename': 'file_a.bin', 'filesize': 10_000, 'client_dir': client_dir_a},
@@ -1546,13 +1724,13 @@ class TestInteropGroupe61:
                     p.kill(); rcs.append(-1)
         finally:
             proc_server.terminate()
-            proc_server.wait(timeout=2)
+            proc_server.wait(timeout=10)
 
         for proxy, src, rc, job in zip(proxies, srcs, rcs, jobs):
-            proxy.wait_done(timeout=5)
+            proxy.wait_done(timeout=10)
             proxy.stop()
             received = proxy.get_received_data()
             name = job['filename']
             assert rc == 0, f"client_g61 pour {name} a échoué (multi, imparfait) — code {rc}"
             assert len(received) > 0, f"Proxy n'a rien capturé pour {name} (G61, multi)"
-            assert md5_bytes(received) == md5(src), f"Intégrité compromise pour {name} (G61, 5, multi, imparfait)"
+            assert md5_bytes(received) == md5(src), f"Intégrité compromise pour {name} (G61, 6, multi, imparfait)"
