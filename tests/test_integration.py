@@ -4,12 +4,12 @@ Tests d'intégration pour SRTP.
 Deux catégories :
 
 5. TestClientServeur — notre server.py + notre client.py sur loopback,
-   dans des conditions réseau parfait.
-   Inclut des transferts de fichiers .txt sauvegardés dans OUTPUT_DIR.
+    dans des conditions réseau parfait.
+    Inclut des transferts de fichiers .txt sauvegardés dans OUTPUT_DIR.
 
 6. TestClientServeur — notre server.py + notre client.py sur loopback,
-   dans des conditions réseau imparfaits (pertes, corruptions, dédoublements).
-   Inclut des transferts de fichiers .txt sauvegardés dans OUTPUT_DIR.
+    dans des conditions réseau imparfaits (pertes, corruptions, dédoublements).
+    Inclut des transferts de fichiers .txt sauvegardés dans OUTPUT_DIR.
 
 Lancement :
     make test (tous les tests)
@@ -31,11 +31,11 @@ from proxy import *
 from Helpers import *
 
 #  Constantes
-HOST        = "::1"
-SRC_DIR     = os.path.join(os.path.dirname(__file__), '..', 'src')
-TOOLS_DIR   = os.path.join(os.path.dirname(__file__), '..', 'tools')
-SERVER_PY   = os.path.join(SRC_DIR, 'server.py')
-CLIENT_PY   = os.path.join(SRC_DIR, 'client.py')
+HOST = "::1"
+SRC_DIR = os.path.join(os.path.dirname(__file__), '..', 'src')
+TOOLS_DIR = os.path.join(os.path.dirname(__file__), '..', 'tools')
+SERVER_PY = os.path.join(SRC_DIR, 'server.py')
+CLIENT_PY = os.path.join(SRC_DIR, 'client.py')
 
 # Binaires de référence dans tools/ à la racine du projet
 SERVER_REF  = os.path.join(TOOLS_DIR, 'server')
@@ -48,16 +48,8 @@ OUTPUT_DIR = pathlib.Path(os.path.join(os.path.dirname(__file__), '..', 'test_ou
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 #  Markers de skip
-ref_server_present = pytest.mark.skipif(
-    not os.path.isfile(SERVER_REF),
-    reason=f"Binaire server absent ({SERVER_REF}). "
-            "Télécharge-le depuis Moodle et place-le dans tools/."
-)
-ref_client_present = pytest.mark.skipif(
-    not os.path.isfile(CLIENT_REF),
-    reason=f"Binaire client absent ({CLIENT_REF}). "
-            "Télécharge-le depuis Moodle et place-le dans tools/."
-)
+ref_server_present = pytest.mark.skipif(not os.path.isfile(SERVER_REF), reason=f"Binaire server absent ({SERVER_REF}). Télécharge-le depuis Moodle et place-le dans tools/.")
+ref_client_present = pytest.mark.skipif(not os.path.isfile(CLIENT_REF), reason=f"Binaire client absent ({CLIENT_REF}). Télécharge-le depuis Moodle et place-le dans tools/.")
 
 
 #  5. TESTS CLIENT <=> SERVEUR (notre implémentation)
@@ -107,21 +99,25 @@ class TestClientServeur:
 
     # Transferts binaires
 
+    @pytest.mark.dependency(name="bin<1", scope="session")
     def test_transfert_petit_fichier(self, tmp_path):
         """Fichier tenant dans un seul paquet (< 1024 octets)."""
         src_md5, dst_md5 = self._run(tmp_path, "small.bin", 500)
         assert src_md5 == dst_md5, "Intégrité compromise sur petit fichier"
 
+    @pytest.mark.dependency(name="bin=1", depends=["bin<1"], scope="session")
     def test_transfert_exactement_1024_octets(self, tmp_path):
         """Fichier tenant exactement dans un paquet."""
         src_md5, dst_md5 = self._run(tmp_path, "exact.bin", 1024)
         assert src_md5 == dst_md5
 
+    @pytest.mark.dependency(name="bin_medium", depends=["bin=1"], scope="session")
     def test_transfert_multi_paquets(self, tmp_path):
         """Fichier nécessitant plusieurs paquets (5 Ko)."""
         src_md5, dst_md5 = self._run(tmp_path, "medium.bin", 5_000)
         assert src_md5 == dst_md5, "Intégrité compromise sur fichier moyen"
 
+    @pytest.mark.dependency(name="bin_large", depends=["bin=1"], scope="session")
     def test_transfert_grand_fichier(self, tmp_path):
         """Fichier de 50 Ko — teste la fenêtre glissante."""
         src_md5, dst_md5 = self._run(tmp_path, "large.bin", 50_000)
@@ -129,6 +125,7 @@ class TestClientServeur:
 
     # Transferts de fichiers texte (.txt) 
 
+    @pytest.mark.dependency(name="txt_court", scope="session")
     def test_transfert_txt_petit(self, tmp_path):
         """Fichier .txt court (50 lignes) — tenant en un seul paquet."""
         src, dst = self._run_txt(tmp_path, "court.txt", lines=50, output_name="court_recu.txt")
@@ -137,6 +134,7 @@ class TestClientServeur:
         assert "Ligne 0000" in contenu, "Le début du fichier texte est manquant"
         assert "Ligne 0049" in contenu, "La fin du fichier texte est manquante"
 
+    @pytest.mark.dependency(depends=["txt_court"], scope="session")
     def test_transfert_txt_multi_paquets(self, tmp_path):
         """Fichier .txt de taille moyenne (500 lignes) — plusieurs paquets."""
         src, dst = self._run_txt(tmp_path, "moyen.txt", lines=500,output_name="moyen_recu.txt")
@@ -144,6 +142,7 @@ class TestClientServeur:
         contenu = dst.read_text(encoding='utf-8')
         assert "Ligne 0499" in contenu, "La dernière ligne est absente"
 
+    @pytest.mark.dependency(name="txt_big", depends=["txt_court"], scope="session")
     def test_transfert_txt_grand(self, tmp_path):
         """Fichier .txt volumineux (1000001 lignes) — fenêtre glissante."""
         src, dst = self._run_txt(tmp_path, "grand.txt", lines=1000001, output_name="grand_recu.txt")
@@ -151,14 +150,15 @@ class TestClientServeur:
         contenu = dst.read_text(encoding='utf-8')
         assert "Ligne 4999" in contenu, "La dernière ligne est absente"
 
+    @pytest.mark.dependency(depends=["txt_court"], scope="session")
     def test_transfert_txt_contenu_identique(self, tmp_path):
         """Vérifie que le contenu texte reçu est identique octet par octet."""
         src, dst = self._run_txt(tmp_path, "identique.txt", lines=100, output_name="identique_recu.txt")
-        assert src.read_bytes() == dst.read_bytes(), \
-            "Le contenu reçu diffère de la source"
+        assert src.read_bytes() == dst.read_bytes(), "Le contenu reçu diffère de la source"
 
     # Autres cas 
 
+    @pytest.mark.dependency(name="no_file", scope="session")
     def test_fichier_inexistant(self, tmp_path):
         """Le serveur doit répondre par un paquet vide si le fichier n'existe pas."""
         serve_dir = tmp_path / "serve"
@@ -179,6 +179,7 @@ class TestClientServeur:
         if dst.exists():
             assert dst.stat().st_size == 0, "Le fichier doit être vide"
 
+    @pytest.mark.dependency(name="double_bin", depends=["bin=1"], scope="session")
     def test_deux_clients_simultanes(self, tmp_path):
         """Deux clients — teste server_multitache."""
         serve_dir = tmp_path / "serve"
@@ -223,6 +224,7 @@ class TestClientServeur:
         assert md5(src_a) == md5(dst_a), "Intégrité compromise pour client A"
         assert md5(src_b) == md5(dst_b), "Intégrité compromise pour client B"
 
+    @pytest.mark.dependency(name="corruption", depends=["bin=1"], scope="session")
     def test_paquet_corrompu_ignore(self, tmp_path):
         """Transfert réussi même après un paquet corrompu envoyé au serveur."""
         serve_dir = tmp_path / "serve"
@@ -262,6 +264,7 @@ class TestReseauImparfait:
     Tests avec pertes et corruption via UDPCapturingProxy.
     """
 
+    @pytest.mark.dependency(depends=["bin_large"], scope="session")
     def test_transfert_avec_pertes_et_corruption(self, tmp_path):
         serve_dir = tmp_path / "serve"
         client_dir = tmp_path / "client"
@@ -302,6 +305,7 @@ class TestReseauImparfait:
         assert md5_bytes(received) == md5(src), \
             "Intégrité compromise avec pertes/corruption"
 
+    @pytest.mark.dependency(depends=["bin_large"], scope="session")
     def test_transfert_avec_pertes_et_corruption_grand(self, tmp_path):
         serve_dir = tmp_path / "serve"
         client_dir = tmp_path / "client"
@@ -342,6 +346,7 @@ class TestReseauImparfait:
         assert md5_bytes(received) == md5(src), \
             "Intégrité compromise avec pertes/corruption"
         
+    @pytest.mark.dependency(depends=["txt_big"], scope="session")
     def test_transfert_txt_reseau_imparfait(self, tmp_path):
         """
         Transfert d'un fichier texte avec pertes et corruption réseau.

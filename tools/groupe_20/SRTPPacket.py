@@ -16,8 +16,8 @@ MAX_SACK_SEQNUMS = (1024 * 8) // SACK_SEQNUM_BITS
 class SRTPPacket:
     def __init__(self, ptype, window, seqnum, timestamp, payload=b""):
         """
-        Encode un segment SRTP et retourne les bytes correspondants.
-          header0(4) + timestamp(4) + crc1(4) [+ payload + crc2(4)]
+            Construit un objet SRTPPacket (correspondant à un paquet SRTP)
+            Lève une ValueError si un champ est incohérent avec les spécifications du protocole
         """
         if len(timestamp) != 4:
             raise ValueError("Timestamp doit faire exactement 4 octets")
@@ -51,6 +51,10 @@ class SRTPPacket:
         self.payload = payload
 
     def to_segment(self):
+        """
+            Encode un segment SRTP et retourne les bytes correspondants.
+            header0(4) + timestamp(4) + crc1(4) [+ payload + crc2(4)]
+        """
         # Construire le header0 en combinant les champs
         header0 = (self.ptype << 30) | (self.window << 24) | (self.length << 11) | self.seqnum
         header0_bytes = header0.to_bytes(4, "big")  # Sur 4 octets et big-endian pour correspondre à l'encodage

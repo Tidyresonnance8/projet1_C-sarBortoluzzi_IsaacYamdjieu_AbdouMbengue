@@ -1,12 +1,13 @@
 import sys
 from io import BufferedWriter
+import socket
 
 from time import time_ns
 from SRTPPacket import *
 
 CONNECTION_TRIES = 150
 WINDOW_RECEPTION_TIMEOUT = 1000 # in us
-max_consecutive_timeouts = 40
+max_consecutive_timeouts = 250
 LOG_PACKETS = False
 RECV_BUFFER_SIZE = 4 * 4 + 1024
 
@@ -20,12 +21,13 @@ class SRTPClient:
         self.window = []
         self.last_valid_ack_segment = SRTPPacket(PTYPE_ACK, self.window_len, self.next_seqnum,
                                                  timestamp=self.last_data_timestamp).to_segment()
-        
-        first_packet = self.client_establish_connection(servername)
-        self.window = [first_packet] if first_packet is not None else []
+        self.connected = False
+        self.client_establish_connection(servername)
+        self.window = []
 
     def is_connected(self):
-        return len(self.window) != 0
+        # return len(self.window) != 0
+        return self.connected
 
     def client_send_get(self, servername: str):
         pstr = servername.split("/")
@@ -39,11 +41,12 @@ class SRTPClient:
         http_request = b"GET /" + '/'.join(pstr[3:]).encode()
         self.sock.connect((hostname, int(port)))
 
-        packet = SRTPPacket(PTYPE_DATA, 0, 0, b"\x00\x00\x00\x00", http_request)
+        # Prof's server needs us to send a non null window
+        packet = SRTPPacket(PTYPE_DATA, 40, 0, b"\x00\x00\x00\x00", http_request)
         if LOG_PACKETS: sys.stderr.write(f"--> {packet}\n")
         assert self.sock.send(packet.to_segment()) == len(packet.to_segment())
 
-    # Returns first data packet
+    # Set self.connected to true when receiving the ack. corresponding to the http request
     def client_establish_connection(self, servername: str):
         # Strategy given a maximum 1 way delay of 2s
         # Send CONNECTION_TRIES packets spaced at short intervals to combat packet loss
@@ -53,9 +56,11 @@ class SRTPClient:
             self.client_send_get(servername)
             try:
                 packet = SRTPPacket.from_segment(self.sock.recv(RECV_BUFFER_SIZE))
-                self.last_data_timestamp = packet.timestamp
-                return packet
-            except TimeoutError:
+                if packet.ptype not in (PTYPE_ACK, PTYPE_SACK):
+                    continue
+                self.connected = True
+                return
+            except (TimeoutError, socket.timeout) as e:
                 pass
             except ValueError as e:
                 if LOG_PACKETS: sys.stderr.write(f"Paquet ignore en raison de : {e}\n")
@@ -63,12 +68,14 @@ class SRTPClient:
         while True:
             try:
                 packet = SRTPPacket.from_segment(self.sock.recv(RECV_BUFFER_SIZE))
-                self.last_data_timestamp = packet.timestamp
-                return packet
+                if packet.ptype not in (PTYPE_ACK, PTYPE_SACK):
+                    continue
+                self.connected = True
+                return
             except ValueError as e:
                 if LOG_PACKETS: sys.stderr.write(f"Paquet ignore pour la raison : {e}\n")
                 continue
-            except TimeoutError:
+            except (TimeoutError, socket.timeout) as e:
                 break
             
 
@@ -114,7 +121,9 @@ class SRTPClient:
     """Return True if packet added"""
     def process_packet(self, packet: SRTPPacket):
         if LOG_PACKETS: sys.stderr.write(f"<-- {packet} \n")
-        assert packet.ptype == PTYPE_DATA
+        if packet.ptype != PTYPE_DATA:
+            return
+        # assert packet.ptype == PTYPE_DATA
 
         # On mémorise le timestamp du paquet reçu pour l'inclure dans son ACK
         self.last_data_timestamp = packet.timestamp
@@ -138,7 +147,7 @@ class SRTPClient:
 
     def client_receive(self, file: BufferedWriter):
         # Timeout cannot be too long, otherwise we never send ack and get stuck receiving the same packets
-        receive_timeout = 0.1 # timeout fixe,TODO : est-ce qu'on l'adapte dynamqiquement ?
+        receive_timeout = 0.1
         self.sock.settimeout(receive_timeout)
         consecutive_timeouts = 0
 
@@ -148,7 +157,7 @@ class SRTPClient:
             while len(self.window) < self.window_len and (time_ns()/1000)-reception_time_of_last_new_packet < WINDOW_RECEPTION_TIMEOUT:
                 try:
                     packet = SRTPPacket.from_segment(self.sock.recv(RECV_BUFFER_SIZE))
-                except TimeoutError:
+                except (TimeoutError, socket.timeout) as e:
                     # If the "end_connection" packet is lost, the client should stop running at some point
                     consecutive_timeouts += 1
                     if consecutive_timeouts >= max_consecutive_timeouts:

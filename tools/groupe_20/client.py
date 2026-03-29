@@ -5,6 +5,7 @@ from SRTPClient import SRTPClient
 
 
 def run_client(args):
+    # with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as sock:
     with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as sock:
         client = SRTPClient(sock, args.servername)
         if client.is_connected():

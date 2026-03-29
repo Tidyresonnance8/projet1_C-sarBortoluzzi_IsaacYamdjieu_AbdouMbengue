@@ -2,7 +2,7 @@ import argparse
 import sys
 import os
 import socket
-from SRTP import server_send, RECV_BUFFER_SIZE, SRTPPacket, server_end_connection
+from SRTP import server_send, RECV_BUFFER_SIZE, SRTPPacket, server_end_connection, server_send_ack_request
 import threading
 import queue
 
@@ -11,20 +11,21 @@ class Client:
     def __init__(self, sock, addr, segment, directory):
         self.sock = sock
         self.addr = addr
-        self.queue = queue.Queue()
+        self.queue = queue.LifoQueue()
         request = SRTPPacket.from_segment(segment)
         self.filename = os.path.join(directory, request.payload.decode()[5:])
-        threading.Thread(target=serve_client, args=(self.sock, self.queue, self.addr, self.filename)).start()
+        threading.Thread(target=serve_client, args=(self,)).start()
 
 
-def serve_client(sock, q, addr, filename):
+def serve_client(client):
     try:
-        with open(filename, "rb") as f:
-            server_send(sock, q, addr, f)
+        with open(client.filename, "rb") as f:
+            server_send_ack_request(client.sock, client.addr)                     # Ack the HTTP request
+            server_send(client, f)
     except FileNotFoundError:
-        sys.stderr.write(f"File not found: {filename}\n")
+        sys.stderr.write(f"File not found: {client.filename}\n")
         # Send empty packet to signal file not found
-        server_end_connection(sock, addr, 0)
+        server_end_connection(client.sock, client.addr, 0)
 
 
 def run_server(args):

@@ -10,6 +10,7 @@ RECV_BUFFER_SIZE = 4 * 4 + 1024
 
 LOG_PACKETS = False
 TIMESTAMP_MODULO = 2 ** 32
+max_processed_acks = 10
 
 # Pour borner les valeurs de timeout
 def clamp(value, min_value, max_value):
@@ -60,6 +61,7 @@ def server_end_connection(sock: socket, addr, seqnum):
 
 
 def get_next_blocks(file_segment_num, window, file: BufferedReader, acked=()):
+    # Get next block to send to the client, based on the current position in the file and the acked packets
     file.seek(file_segment_num * 1024, os.SEEK_SET)
     index = 0
     blocks = []
@@ -73,8 +75,16 @@ def get_next_blocks(file_segment_num, window, file: BufferedReader, acked=()):
         index += 1
     return blocks
 
+def server_send_ack_request(sock: socket, addr):
+    # Send ack for the http request
+    # Send 100 ack to combat packets loss
+    NUMBER_SEND_ACK_REQUEST = 100
+    for _ in range(NUMBER_SEND_ACK_REQUEST):
+        ack = SRTPPacket(PTYPE_ACK, 0, 1, timestamp=b"\x00\x00\x00\x00")
+        assert sock.sendto(ack.to_segment(), addr) == len(ack.to_segment())
 
-def server_send(sock: socket, q: queue.Queue, addr, file: BufferedReader):
+
+def server_send(client, file):
     window = 1
     srtt = None
     rttvar = None
@@ -95,64 +105,70 @@ def server_send(sock: socket, q: queue.Queue, addr, file: BufferedReader):
             sent_timestamps.add(packet_timestamp)
             packet = SRTPPacket(PTYPE_DATA, 0, seqnum, packet_timestamp, data_segment)
             if LOG_PACKETS: sys.stderr.write(f"--> {packet}\n")
-            assert sock.sendto(packet.to_segment(), addr) == len(packet.to_segment())
+            assert client.sock.sendto(packet.to_segment(), client.addr) == len(packet.to_segment())
 
         # Wait for ack
         selective_acked = ()
-        try:
-            ack = SRTPPacket.from_segment(q.get(timeout=ack_timeout))
-            if LOG_PACKETS: sys.stderr.write(f"<-- {ack}\n")
+        
+        # Process multiple ack (but not necessarily all of them)
+        # Discard the remaining ack
+        for _ in range(max_processed_acks):
+            try:
+                ack = SRTPPacket.from_segment(client.queue.get(timeout=ack_timeout))
+                if LOG_PACKETS: sys.stderr.write(f"<-- {ack}\n")
 
-            if ack.ptype not in (PTYPE_ACK, PTYPE_SACK):
-                if LOG_PACKETS: sys.stderr.write(f"ACK ignore (type {ack.ptype})\n")
-                continue
-            
-            #Check si le ACK est dans la fenêtre d'attente du serveur (seqnum cohérent avec les segments envoyés)
-            current_seqnum = file_segment_num % 2 ** 11
-            ack_advance = (ack.seqnum -current_seqnum) % (2 ** 11)
-            if ack_advance > max_ack_advance:
-                if LOG_PACKETS: sys.stderr.write(
-                    f"ACK ignore : seqnum incoherent (seq={ack.seqnum}, courant={current_seqnum}, avance={ack_advance})\n")
-                continue
-
-
-            window = ack.window
-            consecutive_timeouts = 0 
-
-           # Check si le ACK est cohérent avec les segments envoyés (timestamp reconnu) et extraire les éventuels séqnums SACK
-            selective_acked = ()
-            if ack.ptype == PTYPE_SACK:
-                selective_acked = SRTPPacket.decode_sack_payload(ack.payload)
-                if not all(is_seqnum_in_window(seqnum, ack.seqnum, max(window, 1)) and seqnum != ack.seqnum
-                           for seqnum in selective_acked):
-                    if LOG_PACKETS: sys.stderr.write(f"ACK ignore : payload SACK incoherent (seq={ack.seqnum}, window={window}, sacks={selective_acked})\n")
+                if ack.ptype not in (PTYPE_ACK, PTYPE_SACK):
+                    if LOG_PACKETS: sys.stderr.write(f"ACK ignore (type {ack.ptype})\n")
+                    continue
+                
+                #Check si le ACK est dans la fenêtre d'attente du serveur (seqnum cohérent avec les segments envoyés)
+                current_seqnum = file_segment_num % 2 ** 11
+                ack_advance = (ack.seqnum -current_seqnum) % (2 ** 11)
+                if ack_advance > max_ack_advance:
+                    if LOG_PACKETS: sys.stderr.write(
+                        f"ACK ignore : seqnum incoherent (seq={ack.seqnum}, courant={current_seqnum}, avance={ack_advance})\n")
                     continue
 
-            # Check si le ACK correspond à un segment envoyé et met à jour l'estimation du RTT et du timeout, sinon on ignore le ACK pour le calcul du RTT
-            if ack.timestamp in sent_timestamps:
-                rtt_sample = elapsed_seconds_from_timestamp(ack.timestamp)
-                srtt, rttvar, rto = update_rtt_estimator(srtt, rttvar, rtt_sample)
-                ack_timeout = clamp(rto, 0.5, 2.0)
-            else:
-                if LOG_PACKETS: sys.stderr.write("ACK timestamp non reconnu, RTT non mis à jour\n")
 
-            if ack.seqnum > 1000:
-                about_to_loop = True
-            if ack.seqnum < 64 and about_to_loop:
-                about_to_loop = False
-                file_segment_num_mult += 1
+                window = ack.window
+                consecutive_timeouts = 0 
 
-            file_segment_num = (file_segment_num_mult * 2 ** 11) + ack.seqnum  # todo: fixme, loops at 2048
-        except queue.Empty:
-            consecutive_timeouts += 1
-            if consecutive_timeouts >= max_consecutive_timeouts:
-                if LOG_PACKETS: sys.stderr.write("Client semble injoignable, arrêt de la transmission\n")
-                return
-        except ValueError as val_error:
-            if LOG_PACKETS: sys.stderr.write(f"Paquet ignore par le serveur pour la raison : {val_error}\n")
-            new_blocks = get_next_blocks(file_segment_num, window, file, acked=selective_acked)     # TODO : not sure about that
-            continue
+                # Check si le ACK est cohérent avec les segments envoyés (timestamp reconnu) et extraire les éventuels séqnums SACK
+                selective_acked = ()
+                if ack.ptype == PTYPE_SACK:
+                    selective_acked = SRTPPacket.decode_sack_payload(ack.payload)
+                    if not all(is_seqnum_in_window(seqnum, ack.seqnum, max(window, 1)) and seqnum != ack.seqnum
+                            for seqnum in selective_acked):
+                        if LOG_PACKETS: sys.stderr.write(f"ACK ignore : payload SACK incoherent (seq={ack.seqnum}, window={window}, sacks={selective_acked})\n")
+                        continue
+
+                # Check si le ACK correspond à un segment envoyé et met à jour l'estimation du RTT et du timeout, sinon on ignore le ACK pour le calcul du RTT
+                if ack.timestamp in sent_timestamps:
+                    rtt_sample = elapsed_seconds_from_timestamp(ack.timestamp)
+                    srtt, rttvar, rto = update_rtt_estimator(srtt, rttvar, rtt_sample)
+                    ack_timeout = clamp(rto, 0.5, 2.0)
+                else:
+                    if LOG_PACKETS: sys.stderr.write("ACK timestamp non reconnu, RTT non mis à jour\n")
+
+                if ack.seqnum > 1000:
+                    about_to_loop = True
+                if ack.seqnum < 64 and about_to_loop:
+                    about_to_loop = False
+                    file_segment_num_mult += 1
+
+                file_segment_num = (file_segment_num_mult * 2 ** 11) + ack.seqnum
+            except queue.Empty:
+                consecutive_timeouts += 1
+                if consecutive_timeouts >= max_consecutive_timeouts:
+                    if LOG_PACKETS: sys.stderr.write("Client semble injoignable, arrêt de la transmission\n")
+                    return
+                break
+            except ValueError as val_error:
+                if LOG_PACKETS: sys.stderr.write(f"Paquet ignore par le serveur pour la raison : {val_error}\n")
+                continue
+        else:
+            # clear queue
+            client.queue = queue.LifoQueue()
 
         new_blocks = get_next_blocks(file_segment_num, window, file, acked=selective_acked)
-
-    server_end_connection(sock, addr, file_segment_num % 2 ** 11)
+    server_end_connection(client.sock, client.addr, file_segment_num % 2 ** 11)

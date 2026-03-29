@@ -156,6 +156,7 @@ class TestInteroperabilite:
 
     @ref_server_present
     @ref_client_present
+    @pytest.mark.dependency(name="ref_sanity")
     def test_1_sanity_ref_vs_ref(self, tmp_path):
         """
         Vérifie que les deux binaires de référence fonctionnent ensemble.
@@ -183,6 +184,7 @@ class TestInteroperabilite:
     # 2) Notre serveur + client de référence 
 
     @ref_client_present
+    @pytest.mark.dependency(name="ref_notre_server_client_ref_petit", depends=["ref_sanity"])
     def test_2_notre_serveur_client_ref_petit(self, tmp_path):
         """client_ref télécharge un petit fichier (.bin) depuis notre server.py."""
         serve_dir  = tmp_path / "serve"
@@ -195,7 +197,7 @@ class TestInteroperabilite:
         src, received, rc = self.trasfer_via_proxy(
             serve_dir, "small.bin", server_cmd,
             server_cwd=serve_dir, client_dir=client_dir,
-            server_port=port, filesize=500,
+            server_port=port, filesize=500
         )
 
         assert rc == 0, f"client_ref s'est terminé avec le code {rc}"
@@ -203,6 +205,7 @@ class TestInteroperabilite:
             "Intégrité compromise (2, petit .bin)"
 
     @ref_client_present
+    @pytest.mark.dependency(name="ref_notre_server_client_ref_grand", depends=["ref_notre_server_client_ref_petit"])
     def test_2_notre_serveur_client_ref_grand(self, tmp_path):
         """client_ref télécharge un grand fichier (.bin) depuis notre server.py."""
         serve_dir  = tmp_path / "serve"
@@ -215,7 +218,7 @@ class TestInteroperabilite:
         src, received, rc = self.trasfer_via_proxy(
             serve_dir, "large.bin", server_cmd,
             server_cwd=serve_dir, client_dir=client_dir,
-            server_port=port, filesize=50_000,
+            server_port=port, filesize=50_000
         )
 
         assert rc == 0, f"client_ref s'est terminé avec le code {rc}"
@@ -223,6 +226,7 @@ class TestInteroperabilite:
             "Intégrité compromise (2, grand .bin)"
 
     @ref_client_present
+    @pytest.mark.dependency(name="ref_notre_server_client_ref_txt", depends=["ref_sanity"])
     def test_2_notre_serveur_client_ref_txt(self, tmp_path):
         """client_ref télécharge un fichier .txt depuis notre server.py."""
         serve_dir  = tmp_path / "serve"
@@ -247,6 +251,7 @@ class TestInteroperabilite:
         out.write_bytes(received)
 
     @ref_client_present
+    @pytest.mark.dependency(depends=["ref_sanity"])
     def test_2_notre_serveur_client_ref_fichier_inexistant(self, tmp_path):
         """client_ref demande un fichier inexistant — notre serveur répond proprement."""
         serve_dir  = tmp_path / "serve"
@@ -288,6 +293,7 @@ class TestInteroperabilite:
     # 3) Serveur de référence + notre client 
 
     @ref_server_present
+    @pytest.mark.dependency(name="ref_server_ref_notre_client_petit", depends=["ref_sanity"])
     def test_3_server_ref_notre_client_petit(self, tmp_path):
         """Notre client.py télécharge un petit fichier depuis server_ref."""
         serve_dir = tmp_path / "serve"
@@ -307,6 +313,7 @@ class TestInteroperabilite:
         assert md5(src) == md5(dst), "Intégrité compromise (3, petit .bin)"
 
     @ref_server_present
+    @pytest.mark.dependency(name="ref_server_ref_notre_client_grand", depends=["ref_server_ref_notre_client_petit"])
     def test_3_server_ref_notre_client_grand(self, tmp_path):
         """Notre client.py télécharge un grand fichier depuis server_ref."""
         serve_dir = tmp_path / "serve"
@@ -325,6 +332,7 @@ class TestInteroperabilite:
         assert md5(src) == md5(dst), "Intégrité compromise (3, grand .bin)"
 
     @ref_server_present
+    @pytest.mark.dependency(name="ref_server_ref_notre_client_txt", depends=["ref_sanity"])
     def test_3_server_ref_notre_client_txt(self, tmp_path):
         """Notre client.py télécharge un fichier .txt depuis server_ref.
         Résultat sauvegardé dans test_outputs/ pour inspection."""
@@ -348,6 +356,7 @@ class TestInteroperabilite:
         assert "Ligne 0299" in contenu
 
     @ref_server_present
+    @pytest.mark.dependency(depends=["ref_sanity"])
     def test_3_server_ref_notre_client_fichier_inexistant(self, tmp_path):
         """Notre client demande un fichier inexistant à server_ref."""
         serve_dir = tmp_path / "serve"
@@ -366,6 +375,7 @@ class TestInteroperabilite:
     # 4) Notre serveur + plusieurs clients_ref simultanés 
 
     @ref_client_present
+    @pytest.mark.dependency(name="ref_multi_2", depends=["ref_notre_server_client_ref_petit", "ref_notre_server_client_ref_grand"])
     def test_4_deux_clients_ref_simultanes(self, tmp_path):
         """
         Deux client_ref lancés simultanément contre notre server.py.
@@ -401,6 +411,7 @@ class TestInteroperabilite:
                 f"Intégrité compromise pour client_ref sur {name}"
 
     @ref_client_present
+    @pytest.mark.dependency(depends=["ref_multi_2"])
     def test_4_trois_clients_ref_simultanes(self, tmp_path):
         """
         Trois client_ref lancés simultanément contre notre server.py.
@@ -445,6 +456,7 @@ class TestInteroperabilite:
                 f"Intégrité compromise pour client_ref sur {name}"
 
     @ref_client_present
+    @pytest.mark.dependency(depends=["ref_notre_server_client_ref_txt"])
     def test_4_clients_ref_fichiers_txt_simultanes(self, tmp_path):
         """
         Deux client_ref téléchargent des .txt simultanément depuis notre server.py.
@@ -638,6 +650,7 @@ class TestInteropGroupe20:
 
     @g20_server_present
     @g20_client_present
+    @pytest.mark.dependency(name="g20_sanity")
     def test_0_sanity_g20_vs_g20(self, tmp_path):
         """
         Vérifie que le server et le client du groupe 20 fonctionnent ensemble.
@@ -645,8 +658,6 @@ class TestInteropGroupe20:
         """
         serve_dir  = tmp_path / "serve";  serve_dir.mkdir()
         client_dir = tmp_path / "client"; client_dir.mkdir()
-
-        src, received, rc = self.our_server_their_client.__func__(self, serve_dir, client_dir, "test.bin", free_port(), filesize=5_000) if False else None  # placeholder — on utilise their_server + their_client directement
 
         port = free_port()
         src = make_test_file(serve_dir, "test.bin", 5_000)
@@ -680,6 +691,7 @@ class TestInteropGroupe20:
     # 1) Notre server + client_g20 — parfait 
 
     @g20_client_present
+    @pytest.mark.dependency(name="g20_notre_server_client_petit", depends=["g20_sanity"])
     def test_1_notre_server_client_g20_petit_parfait(self, tmp_path):
         """client_g20 télécharge un petit fichier depuis notre server.py (parfait)."""
         serve_dir  = tmp_path / "serve";  serve_dir.mkdir()
@@ -691,6 +703,7 @@ class TestInteropGroupe20:
         assert md5(src) == md5(dst), "Intégrité compromise (G20, 1, petit, parfait)"
 
     @g20_client_present
+    @pytest.mark.dependency(name="g20_notre_server_client_grand", depends=["g20_notre_server_client_petit"])
     def test_1_notre_server_client_g20_grand_parfait(self, tmp_path):
         """client_g20 télécharge un grand fichier depuis notre server.py (parfait)."""
         serve_dir  = tmp_path / "serve";  serve_dir.mkdir()
@@ -702,6 +715,7 @@ class TestInteropGroupe20:
         assert md5(src) == md5(dst), "Intégrité compromise (G20, 1, grand, parfait)"
 
     @g20_client_present
+    @pytest.mark.dependency(name="g20_notre_server_client_txt", depends=["g20_sanity"])
     def test_1_notre_server_client_g20_txt_parfait(self, tmp_path):
         """client_g20 télécharge un fichier .txt depuis notre server.py (parfait)."""
         serve_dir  = tmp_path / "serve";  serve_dir.mkdir()
@@ -716,6 +730,7 @@ class TestInteropGroupe20:
     # 2) Notre server + client_g20 — imparfait
 
     @g20_client_present
+    @pytest.mark.dependency(depends=["g20_notre_server_client_petit"])
     def test_2_notre_server_client_g20_petit_imparfait(self, tmp_path):
         """client_g20 télécharge un petit fichier depuis notre server.py (réseau imparfait)."""
         serve_dir  = tmp_path / "serve";  serve_dir.mkdir()
@@ -727,6 +742,7 @@ class TestInteropGroupe20:
         assert md5(src) == md5(dst), "Intégrité compromise (G20, 2, petit, imparfait)"
 
     @g20_client_present
+    @pytest.mark.dependency(depends=["g20_notre_server_client_grand"])
     def test_2_notre_server_client_g20_grand_imparfait(self, tmp_path):
         """client_g20 télécharge un grand fichier depuis notre server.py (réseau imparfait)."""
         serve_dir  = tmp_path / "serve";  serve_dir.mkdir()
@@ -737,6 +753,7 @@ class TestInteropGroupe20:
         assert md5(src) == md5(dst), "Intégrité compromise (G20, 2, grand, imparfait)"
 
     @g20_client_present
+    @pytest.mark.dependency(depends=["g20_notre_server_client_txt"])
     def test_2_notre_server_client_g20_txt_imparfait(self, tmp_path):
         """client_g20 télécharge un .txt depuis notre server.py (réseau imparfait)."""
         serve_dir  = tmp_path / "serve";  serve_dir.mkdir()
@@ -750,6 +767,7 @@ class TestInteropGroupe20:
     # 3) server_g20 + notre client — parfait 
 
     @g20_server_present
+    @pytest.mark.dependency(name="g20_server_notre_client_petit", depends=["g20_sanity"])
     def test_3_server_g20_notre_client_petit_parfait(self, tmp_path):
         """Notre client.py télécharge un petit fichier depuis server_g20 (parfait)."""
         serve_dir = tmp_path / "serve"; serve_dir.mkdir()
@@ -760,6 +778,7 @@ class TestInteropGroupe20:
         assert md5(src) == md5(dst), "Intégrité compromise (G20, 3, petit, parfait)"
 
     @g20_server_present
+    @pytest.mark.dependency(name="g20_server_notre_client_grand", depends=["g20_server_notre_client_petit"])
     def test_3_server_g20_notre_client_grand_parfait(self, tmp_path):
         """Notre client.py télécharge un grand fichier depuis server_g20 (parfait)."""
         serve_dir = tmp_path / "serve"; serve_dir.mkdir()
@@ -769,6 +788,7 @@ class TestInteropGroupe20:
         assert md5(src) == md5(dst), "Intégrité compromise (G20, 3, grand, parfait)"
 
     @g20_server_present
+    @pytest.mark.dependency(name="g20_server_notre_client_txt", depends=["g20_sanity"])
     def test_3_server_g20_notre_client_txt_parfait(self, tmp_path):
         """Notre client.py télécharge un .txt depuis server_g20 (parfait)."""
         serve_dir = tmp_path / "serve"; serve_dir.mkdir()
@@ -781,6 +801,7 @@ class TestInteropGroupe20:
     # 4) server_g20 + notre client — imparfait
 
     @g20_server_present
+    @pytest.mark.dependency(depends=["g20_server_notre_client_petit"])
     def test_4_server_g20_notre_client_petit_imparfait(self, tmp_path):
         """Notre client.py télécharge un petit fichier depuis server_g20 (imparfait)."""
         serve_dir = tmp_path / "serve"; serve_dir.mkdir()
@@ -791,6 +812,7 @@ class TestInteropGroupe20:
         assert md5(src) == md5(dst), "Intégrité compromise (G20, 4, petit, imparfait)"
 
     @g20_server_present
+    @pytest.mark.dependency(depends=["g20_server_notre_client_grand"])
     def test_4_server_g20_notre_client_grand_imparfait(self, tmp_path):
         """Notre client.py télécharge un grand fichier depuis server_g20 (imparfait)."""
         serve_dir = tmp_path / "serve"; serve_dir.mkdir()
@@ -800,6 +822,7 @@ class TestInteropGroupe20:
         assert md5(src) == md5(dst), "Intégrité compromise (G20, 4, grand, imparfait)"
 
     @g20_server_present
+    @pytest.mark.dependency(depends=["g20_server_notre_client_txt"])
     def test_4_server_g20_notre_client_txt_imparfait(self, tmp_path):
         """Notre client.py télécharge un .txt depuis server_g20 (imparfait)."""
         serve_dir = tmp_path / "serve"; serve_dir.mkdir()
@@ -812,6 +835,7 @@ class TestInteropGroupe20:
     # 5) Notre server + N clients_g20 simultanés — parfait
 
     @g20_client_present
+    @pytest.mark.dependency(name="g20_multi_parfait", depends=["g20_notre_server_client_petit", "g20_notre_server_client_grand", "g20_notre_server_client_txt"])
     def test_5_multi_clients_g20_simultanes_parfait(self, tmp_path):
         """
         Deux clients_g20 lancés simultanément contre notre server.py
@@ -871,6 +895,7 @@ class TestInteropGroupe20:
     # 6) Notre server + N clients_g20 simultanés — imparfait
 
     @g20_client_present
+    @pytest.mark.dependency(depends=["g20_multi_parfait"])
     def test_6_multi_clients_g20_simultanes_imparfait(self, tmp_path):
         """
         Deux clients_g20 lancés simultanément contre notre server.py
@@ -1047,6 +1072,7 @@ class TestInteropGroupe42:
 
     @g42_server_present
     @g42_client_present
+    @pytest.mark.dependency(name="g42_sanity")
     def test_0_sanity_g42_vs_g42(self, tmp_path):
         """
         Vérifie que le server et le client du groupe 42 fonctionnent ensemble.
@@ -1087,6 +1113,7 @@ class TestInteropGroupe42:
     # 1) Notre server + client_g42 — parfait 
 
     @g42_client_present
+    @pytest.mark.dependency(name="g42_notre_server_client_petit", depends=["g42_sanity"])
     def test_1_notre_server_client_g42_petit_parfait(self, tmp_path):
         """client_g42 télécharge un petit fichier depuis notre server.py (parfait)."""
         serve_dir  = tmp_path / "serve";  serve_dir.mkdir()
@@ -1097,6 +1124,7 @@ class TestInteropGroupe42:
         assert md5(src) == md5(dst), "Intégrité compromise (G42, 1, petit, parfait)"
 
     @g42_client_present
+    @pytest.mark.dependency(name="g42_notre_server_client_grand", depends=["g42_notre_server_client_petit"])
     def test_1_notre_server_client_g42_grand_parfait(self, tmp_path):
         """client_g42 télécharge un grand fichier depuis notre server.py (parfait)."""
         serve_dir  = tmp_path / "serve";  serve_dir.mkdir()
@@ -1107,6 +1135,7 @@ class TestInteropGroupe42:
         assert md5(src) == md5(dst), "Intégrité compromise (G42, 1, grand, parfait)"
 
     @g42_client_present
+    @pytest.mark.dependency(name="g42_notre_server_client_txt", depends=["g42_sanity"])
     def test_1_notre_server_client_g42_txt_parfait(self, tmp_path):
         """client_g42 télécharge un .txt depuis notre server.py (parfait)."""
         serve_dir  = tmp_path / "serve";  serve_dir.mkdir()
@@ -1120,6 +1149,7 @@ class TestInteropGroupe42:
     # 2) Notre server + client_g42 — imparfait 
 
     @g42_client_present
+    @pytest.mark.dependency(depends=["g42_notre_server_client_petit"])
     def test_2_notre_server_client_g42_petit_imparfait(self, tmp_path):
         """client_g42 télécharge un petit fichier depuis notre server.py (imparfait)."""
         serve_dir  = tmp_path / "serve";  serve_dir.mkdir()
@@ -1130,6 +1160,7 @@ class TestInteropGroupe42:
         assert md5(src) == md5(dst), "Intégrité compromise (G42, 2, petit, imparfait)"
 
     @g42_client_present
+    @pytest.mark.dependency(depends=["g42_notre_server_client_grand"])
     def test_2_notre_server_client_g42_grand_imparfait(self, tmp_path):
         """client_g42 télécharge un grand fichier depuis notre server.py (imparfait)."""
         serve_dir  = tmp_path / "serve";  serve_dir.mkdir()
@@ -1139,6 +1170,7 @@ class TestInteropGroupe42:
         assert md5(src) == md5(dst), "Intégrité compromise (G42, 2, grand, imparfait)"
 
     @g42_client_present
+    @pytest.mark.dependency(depends=["g42_notre_server_client_txt"])
     def test_2_notre_server_client_g42_txt_imparfait(self, tmp_path):
         """client_g42 télécharge un .txt depuis notre server.py (imparfait)."""
         serve_dir  = tmp_path / "serve";  serve_dir.mkdir()
@@ -1151,6 +1183,7 @@ class TestInteropGroupe42:
     # 3) server_g42 + notre client — parfait 
 
     @g42_server_present
+    @pytest.mark.dependency(name="g42_server_notre_client_petit", depends=["g42_sanity"])
     def test_3_server_g42_notre_client_petit_parfait(self, tmp_path):
         """Notre client.py télécharge un petit fichier depuis server_g42 (parfait)."""
         serve_dir = tmp_path / "serve"; serve_dir.mkdir()
@@ -1161,6 +1194,7 @@ class TestInteropGroupe42:
         assert md5(src) == md5(dst), "Intégrité compromise (G42, 3, petit, parfait)"
 
     @g42_server_present
+    @pytest.mark.dependency(name="g42_server_notre_client_grand", depends=["g42_server_notre_client_petit"])
     def test_3_server_g42_notre_client_grand_parfait(self, tmp_path):
         """Notre client.py télécharge un grand fichier depuis server_g42 (parfait)."""
         serve_dir = tmp_path / "serve"; serve_dir.mkdir()
@@ -1170,6 +1204,7 @@ class TestInteropGroupe42:
         assert md5(src) == md5(dst), "Intégrité compromise (G42, 3, grand, parfait)"
 
     @g42_server_present
+    @pytest.mark.dependency(name="g42_server_notre_client_txt", depends=["g42_sanity"])
     def test_3_server_g42_notre_client_txt_parfait(self, tmp_path):
         """Notre client.py télécharge un .txt depuis server_g42 (parfait)."""
         serve_dir = tmp_path / "serve"; serve_dir.mkdir()
@@ -1182,6 +1217,7 @@ class TestInteropGroupe42:
     # 4) server_g42 + notre client — imparfait 
 
     @g42_server_present
+    @pytest.mark.dependency(depends=["g42_server_notre_client_petit"])
     def test_4_server_g42_notre_client_petit_imparfait(self, tmp_path):
         """Notre client.py télécharge un petit fichier depuis server_g42 (imparfait)."""
         serve_dir = tmp_path / "serve"; serve_dir.mkdir()
@@ -1192,6 +1228,7 @@ class TestInteropGroupe42:
         assert md5(src) == md5(dst), "Intégrité compromise (G42, 4, petit, imparfait)"
 
     @g42_server_present
+    @pytest.mark.dependency(depends=["g42_server_notre_client_grand"])
     def test_4_server_g42_notre_client_grand_imparfait(self, tmp_path):
         """Notre client.py télécharge un grand fichier depuis server_g42 (imparfait)."""
         serve_dir = tmp_path / "serve"; serve_dir.mkdir()
@@ -1201,6 +1238,7 @@ class TestInteropGroupe42:
         assert md5(src) == md5(dst), "Intégrité compromise (G42, 4, grand, imparfait)"
 
     @g42_server_present
+    @pytest.mark.dependency(depends=["g42_server_notre_client_txt"])
     def test_4_server_g42_notre_client_txt_imparfait(self, tmp_path):
         """Notre client.py télécharge un .txt depuis server_g42 (imparfait)."""
         serve_dir = tmp_path / "serve"; serve_dir.mkdir()
@@ -1213,6 +1251,7 @@ class TestInteropGroupe42:
     # 5) Notre server + N clients_g42 simultanés — parfait
 
     @g42_client_present
+    @pytest.mark.dependency(name="g42_multi_parfait", depends=["g42_notre_server_client_petit", "g42_notre_server_client_grand", "g42_notre_server_client_txt"])
     def test_5_multi_clients_g42_simultanes_parfait(self, tmp_path):
         """
         Deux clients_g42 lancés simultanément contre notre server.py
@@ -1272,6 +1311,7 @@ class TestInteropGroupe42:
     # 6) Notre server + N clients_g42 simultanés — imparfait 
 
     @g42_client_present
+    @pytest.mark.dependency(depends=["g42_multi_parfait"])
     def test_6_multi_clients_g42_simultanes_imparfait(self, tmp_path):
         """
         Deux clients_g42 lancés simultanément contre notre server.py
@@ -1448,6 +1488,7 @@ class TestInteropGroupe61:
 
     @g61_server_present
     @g61_client_present
+    @pytest.mark.dependency(name="g61_sanity")
     def test_0_sanity_g61_vs_g61(self, tmp_path):
         """
         Vérifie que le server et le client du groupe 61 fonctionnent ensemble.
@@ -1488,6 +1529,7 @@ class TestInteropGroupe61:
     # 1) Notre server + client_g61 — parfait 
 
     @g61_client_present
+    @pytest.mark.dependency(name="g61_notre_server_client_petit", depends=["g61_sanity"])
     def test_1_notre_server_client_g61_petit_parfait(self, tmp_path):
         """client_g61 télécharge un petit fichier depuis notre server.py (parfait)."""
         serve_dir  = tmp_path / "serve";  serve_dir.mkdir()
@@ -1498,6 +1540,7 @@ class TestInteropGroupe61:
         assert md5(src) == md5(dst), "Intégrité compromise (G61, 1, petit, parfait)"
 
     @g61_client_present
+    @pytest.mark.dependency(name="g61_notre_server_client_grand", depends=["g61_notre_server_client_petit"])
     def test_1_notre_server_client_g61_grand_parfait(self, tmp_path):
         """client_g61 télécharge un grand fichier depuis notre server.py (parfait)."""
         serve_dir  = tmp_path / "serve";  serve_dir.mkdir()
@@ -1508,6 +1551,7 @@ class TestInteropGroupe61:
         assert md5(src) == md5(dst), "Intégrité compromise (G61, 1, grand, parfait)"
 
     @g61_client_present
+    @pytest.mark.dependency(name="g61_notre_server_client_txt", depends=["g61_sanity"])
     def test_1_notre_server_client_g61_txt_parfait(self, tmp_path):
         """client_g61 télécharge un .txt depuis notre server.py (parfait)."""
         serve_dir  = tmp_path / "serve";  serve_dir.mkdir()
@@ -1521,6 +1565,7 @@ class TestInteropGroupe61:
     # 2) Notre server + client_g61 — imparfait 
 
     @g61_client_present
+    @pytest.mark.dependency(depends=["g61_notre_server_client_petit"])
     def test_2_notre_server_client_g61_petit_imparfait(self, tmp_path):
         """client_g61 télécharge un petit fichier depuis notre server.py (imparfait)."""
         serve_dir  = tmp_path / "serve";  serve_dir.mkdir()
@@ -1531,6 +1576,7 @@ class TestInteropGroupe61:
         assert md5(src) == md5(dst), "Intégrité compromise (G61, 2, petit, imparfait)"
 
     @g61_client_present
+    @pytest.mark.dependency(depends=["g61_notre_server_client_grand"])
     def test_2_notre_server_client_g61_grand_imparfait(self, tmp_path):
         """client_g61 télécharge un grand fichier depuis notre server.py (imparfait)."""
         serve_dir  = tmp_path / "serve";  serve_dir.mkdir()
@@ -1540,6 +1586,7 @@ class TestInteropGroupe61:
         assert md5(src) == md5(dst), "Intégrité compromise (G61, 2, grand, imparfait)"
 
     @g61_client_present
+    @pytest.mark.dependency(depends=["g61_notre_server_client_txt"])
     def test_2_notre_server_client_g61_txt_imparfait(self, tmp_path):
         """client_g61 télécharge un .txt depuis notre server.py (imparfait)."""
         serve_dir  = tmp_path / "serve";  serve_dir.mkdir()
@@ -1552,6 +1599,7 @@ class TestInteropGroupe61:
     # 3) server_g61 + notre client — parfait 
 
     @g61_server_present
+    @pytest.mark.dependency(name="g61_server_notre_client_petit", depends=["g61_sanity"])
     def test_3_server_g61_notre_client_petit_parfait(self, tmp_path):
         """Notre client.py télécharge un petit fichier depuis server_g61 (parfait)."""
         serve_dir = tmp_path / "serve"; serve_dir.mkdir()
@@ -1562,6 +1610,7 @@ class TestInteropGroupe61:
         assert md5(src) == md5(dst), "Intégrité compromise (G61, 3, petit, parfait)"
 
     @g61_server_present
+    @pytest.mark.dependency(name="g61_server_notre_client_grand", depends=["g61_server_notre_client_petit"])
     def test_3_server_g61_notre_client_grand_parfait(self, tmp_path):
         """Notre client.py télécharge un grand fichier depuis server_g61 (parfait)."""
         serve_dir = tmp_path / "serve"; serve_dir.mkdir()
@@ -1571,6 +1620,7 @@ class TestInteropGroupe61:
         assert md5(src) == md5(dst), "Intégrité compromise (G61, 3, grand, parfait)"
 
     @g61_server_present
+    @pytest.mark.dependency(name="g61_server_notre_client_txt", depends=["g61_sanity"])
     def test_3_server_g61_notre_client_txt_parfait(self, tmp_path):
         """Notre client.py télécharge un .txt depuis server_g61 (parfait)."""
         serve_dir = tmp_path / "serve"; serve_dir.mkdir()
@@ -1583,6 +1633,7 @@ class TestInteropGroupe61:
     # 4) server_g61 + notre client — imparfait 
 
     @g61_server_present
+    @pytest.mark.dependency(depends=["g61_server_notre_client_petit"])
     def test_4_server_g61_notre_client_petit_imparfait(self, tmp_path):
         """Notre client.py télécharge un petit fichier depuis server_g61 (imparfait)."""
         serve_dir = tmp_path / "serve"; serve_dir.mkdir()
@@ -1593,6 +1644,7 @@ class TestInteropGroupe61:
         assert md5(src) == md5(dst), "Intégrité compromise (G61, 4, petit, imparfait)"
 
     @g61_server_present
+    @pytest.mark.dependency(depends=["g61_server_notre_client_grand", "g61_server_notre_petit_imparfait"])
     def test_4_server_g61_notre_client_grand_imparfait(self, tmp_path):
         """Notre client.py télécharge un grand fichier depuis server_g61 (imparfait)."""
         serve_dir = tmp_path / "serve"; serve_dir.mkdir()
@@ -1602,6 +1654,7 @@ class TestInteropGroupe61:
         assert md5(src) == md5(dst), "Intégrité compromise (G61, 4, grand, imparfait)"
 
     @g61_server_present
+    @pytest.mark.dependency(depends=["g61_server_notre_client_txt"])
     def test_4_server_g61_notre_client_txt_imparfait(self, tmp_path):
         """Notre client.py télécharge un .txt depuis server_g61 (imparfait)."""
         serve_dir = tmp_path / "serve"; serve_dir.mkdir()
@@ -1614,6 +1667,7 @@ class TestInteropGroupe61:
     # 5) Notre server + N clients_g61 simultanés — parfait
 
     @g61_client_present
+    @pytest.mark.dependency(name="g61_multi_parfait", depends=["g61_notre_server_client_grand", "g61_notre_server_client_txt"])
     def test_5_multi_clients_g61_simultanes_parfait(self, tmp_path):
         """
         Deux clients_g61 lancés simultanément contre notre server.py
@@ -1673,6 +1727,7 @@ class TestInteropGroupe61:
     # 6) Notre server + N clients_g61 simultanés — imparfait 
 
     @g61_client_present
+    @pytest.mark.dependency(depends=["g61_multi_parfait"])
     def test_6_multi_clients_g61_simultanes_imparfait(self, tmp_path):
         """
         Deux clients_g61 lancés simultanément contre notre server.py
