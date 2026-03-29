@@ -5,7 +5,7 @@ import argparse
 import protocol
 import time
 
-MAX_RETRANSMIT_FINAL = 10
+MAX_RETRANSMIT = 5
 
 def server_multitache(bind_addr: str, bind_port: int, root_dir: str) -> int:
     with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as sock:
@@ -31,6 +31,9 @@ def server_multitache(bind_addr: str, bind_port: int, root_dir: str) -> int:
                             continue
                         chemin_local = os.path.join(root_dir, chemin_extrait[1].strip().lstrip('/'))
                         print(f"Nouvelle requête : {chemin_local}", file=sys.stderr)
+                        pkt_connexion = protocol.empackage(protocol.PTYPE_ACK, 0, 1, timestamp=0)
+                        for _ in range (MAX_RETRANSMIT):
+                            sock.sendto(pkt_connexion, peer_addr)
                         try:
                             fichier = open(chemin_local, "rb")
                             clients[peer_addr] = {
@@ -134,7 +137,7 @@ def server_multitache(bind_addr: str, bind_port: int, root_dir: str) -> int:
                             info['time'] = temps_actuel
                     elif 'pkt_fin' in etat:
                         # Retransmettre le paquet de fin si pas encore acquitté
-                        for _ in range (MAX_RETRANSMIT_FINAL) : sock.sendto(etat['pkt_fin'], addr)
+                        for _ in range (MAX_RETRANSMIT) : sock.sendto(etat['pkt_fin'], addr)
                     etat['dernier_contact'] = temps_actuel
 
                 # Considérer le transfert terminé 3 secondes après le paquet fin envoyé
