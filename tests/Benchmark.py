@@ -264,60 +264,6 @@ def plot_throughput_vs_loss(results: dict, out: pathlib.Path, file_size_kb=LOSS_
     print(f"→ {out}")
 
 
-# Expérience 3 : CDF des temps de transfert
-
-def bench_transfer_times(tmp_base: pathlib.Path, sizes_kb, repeats=8):
-    """Collecte les temps de transfert bruts pour tracer une CDF."""
-    results = {}
-    for kb in sizes_kb:
-        size = kb * 1024
-        times = []
-        for rep in range(repeats):
-            serve_dir = tmp_base / f"cdf_{kb}_{rep}"
-            serve_dir.mkdir(parents=True, exist_ok=True)
-            elapsed, ok = run_transfer(serve_dir, "cdf.bin", size)
-            if ok:
-                times.append(elapsed)
-            print(f"  size={_fmt_size(kb):>10}  rep={rep}  "
-                f"{'OK' if ok else 'FAIL'}  {elapsed:.3f}s")
-        results[kb] = times
-    return results
-
-
-def plot_cdf(results: dict, out: pathlib.Path):
-    # Palette de 12 couleurs distinctes
-    palette = [
-        "#4C78A8", "#F28E2B", "#54A24B", "#E45756",
-        "#72B7B2", "#B279A2", "#FF9DA6", "#9D755D",
-        "#BAB0AC", "#D4A6C8", "#86BCB6", "#FFBF79",
-    ]
-    fig, ax = plt.subplots(figsize=(10, 5))
-    for (kb, times), color in zip(sorted(results.items()), palette):
-        if not times:
-            continue
-        x = sorted(times)
-        y = np.arange(1, len(x) + 1) / len(x)
-        ax.step(x, y, where="post", label=_fmt_size(kb), color=color, linewidth=2)
-    ax.set_xlabel("Temps de transfert (s)")
-    ax.set_ylabel("CDF")
-    ax.set_title(f"Distribution des temps de transfert (log-log)\n"
-                f"({len(results)} tailles de fichier, de 1 KB à 100 MB)")
-    ax.legend(title="Taille fichier", ncol=2, fontsize=8)
-    ax.grid(which="both", linestyle="--", alpha=0.4)
-    # Axe X en log
-    ax.set_xscale("log")
-    ax.xaxis.set_major_formatter(ticker.FuncFormatter(
-        lambda v, _: f"{v:.3g} s"))
-    # Axe Y en log (CDF de ~0.01 à 1)
-    ax.set_yscale("log")
-    ax.set_ylim(1e-2, 1.05)
-    ax.yaxis.set_major_formatter(ticker.FuncFormatter(
-        lambda v, _: f"{v:.2g}"))
-    fig.tight_layout()
-    fig.savefig(out, dpi=150)
-    plt.close(fig)
-    print(f"→ {out}")
-
 
 # Main 
 
@@ -348,11 +294,6 @@ def main():
         loss_rates = [0.0, 0.05, 0.10, 0.20, 0.30]
         r2 = bench_throughput_vs_loss(tmp / "exp2", loss_rates, repeats=3, file_size_kb=LOSS_BENCH_SIZE_KB)
         plot_throughput_vs_loss(r2, PLOT_DIR / "throughput_vs_loss.png",file_size_kb=LOSS_BENCH_SIZE_KB)
-
-        # 3) CDF des temps de transfert (12 tailles, 1 KB → 100 MB)
-        print(f"\n[3/3] CDF des temps de transfert ({len(FILE_SIZES_KB)} tailles)")
-        r3 = bench_transfer_times(tmp / "exp3", FILE_SIZES_KB, repeats=8)
-        plot_cdf(r3, PLOT_DIR / "latency_cdf.png")
 
     print("\nTerminé. Graphiques dans :", PLOT_DIR)
 
